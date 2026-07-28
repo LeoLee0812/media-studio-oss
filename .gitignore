@@ -1,0 +1,22 @@
+/node_modules
+/.pnp
+.pnp.*
+/coverage
+/.next/
+/out/
+/build
+.DS_Store
+*.pem
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.env*
+# 环境变量模板不含密钥，必须入库（docs/architecture.md 引用它）
+!.env.example
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# 转换脚本缓存（wenyan 主题 CSS 下载缓存，不入库）
+/.cache/
