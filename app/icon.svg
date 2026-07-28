@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 站点 favicon：与导航栏 Radio Logo 同款广播图标，紫底白图保证亮/暗色标签栏都可辨认 -->
+  <rect width="64" height="64" rx="14" fill="#7c3aed"/>
+  <g fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round">
+    <path d="M17.8 46.2c-7.8-7.8-7.8-20.6 0-28.4"/>
+    <path d="M24.4 39.6c-4.2-4.2-4.2-11 0-15.2"/>
+    <path d="M39.6 24.4c4.2 4.2 4.2 11 0 15.2"/>
+    <path d="M46.2 17.8c7.8 7.8 7.8 20.6 0 28.4"/>
+  </g>
+  <circle cx="32" cy="32" r="5" fill="#ffffff"/>
+</svg>

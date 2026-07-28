@@ -1,0 +1,263 @@
+/*
+ * 皮肤（skin）= 一整套配色。与明暗（<html class="dark">）是两个正交维度：
+ *   <html data-skin="broadcast" class="dark">  →  电台皮肤的深色版
+ *
+ * 选择器一律用 html[data-skin="x"]（特异性 0,1,1），压过 globals.css 里的 :root（0,1,0）；
+ * 深色版用 html[data-skin="x"].dark（0,2,1），压过 .dark（0,1,0）。
+ * 默认皮肤 mono 不在这里定义——没有任何覆盖时自然落回 globals.css 的 :root / .dark。
+ *
+ * 只覆盖有差异的变量，其余（sidebar、chart 之类）沿用默认，避免维护五份全量清单。
+ */
+
+/* ══════════════ 朱砂 ember ══════════════
+   暖白底 + 砖红主色。CTA 锐利、圆角收紧，走的是落地页那一路的观感。 */
+html[data-skin="ember"] {
+  --background: oklch(0.972 0.002 40);
+  --foreground: oklch(0.18 0.012 30);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.012 30);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.012 30);
+  --primary: oklch(0.53 0.21 30);
+  --primary-foreground: oklch(0.99 0.005 40);
+  --secondary: oklch(0.95 0.008 35);
+  --secondary-foreground: oklch(0.26 0.03 30);
+  --muted: oklch(0.955 0.006 40);
+  --muted-foreground: oklch(0.5 0.018 35);
+  --accent: oklch(0.94 0.04 32);
+  --accent-foreground: oklch(0.45 0.18 30);
+  --destructive: oklch(0.53 0.21 30);
+  --border: oklch(0.9 0.008 40);
+  --input: oklch(0.9 0.008 40);
+  --ring: oklch(0.53 0.21 30);
+  --radius: 0.375rem;
+  --chart-1: oklch(0.53 0.21 30);
+  --chart-2: oklch(0.68 0.16 45);
+  --chart-3: oklch(0.42 0.14 25);
+  --chart-4: oklch(0.78 0.1 55);
+  --chart-5: oklch(0.6 0.07 20);
+  --sidebar: oklch(0.985 0.002 40);
+  --sidebar-foreground: oklch(0.18 0.012 30);
+  --sidebar-border: oklch(0.9 0.008 40);
+}
+html[data-skin="ember"].dark {
+  --background: oklch(0.17 0.012 30);
+  --foreground: oklch(0.95 0.006 40);
+  --card: oklch(0.215 0.016 30);
+  --card-foreground: oklch(0.95 0.006 40);
+  --popover: oklch(0.215 0.016 30);
+  --popover-foreground: oklch(0.95 0.006 40);
+  --primary: oklch(0.63 0.2 30);
+  --primary-foreground: oklch(0.99 0.005 40);
+  --secondary: oklch(0.28 0.022 30);
+  --secondary-foreground: oklch(0.95 0.006 40);
+  --muted: oklch(0.28 0.02 30);
+  --muted-foreground: oklch(0.72 0.02 35);
+  --accent: oklch(0.33 0.07 30);
+  --accent-foreground: oklch(0.85 0.11 35);
+  --destructive: oklch(0.63 0.2 30);
+  --border: oklch(0.8 0.06 35 / 15%);
+  --input: oklch(0.8 0.06 35 / 20%);
+  --ring: oklch(0.63 0.2 30);
+  --chart-1: oklch(0.63 0.2 30);
+  --chart-2: oklch(0.75 0.15 50);
+  --chart-3: oklch(0.55 0.16 20);
+  --chart-4: oklch(0.85 0.1 60);
+  --chart-5: oklch(0.68 0.08 25);
+  --sidebar: oklch(0.215 0.016 30);
+  --sidebar-foreground: oklch(0.95 0.006 40);
+  --sidebar-border: oklch(0.8 0.06 35 / 15%);
+}
+
+/* ══════════════ 电台 broadcast ══════════════
+   琥珀 + 暖褐。老式收音机面板 / 调音台的味道，呼应站点的 Radio 标识。 */
+html[data-skin="broadcast"] {
+  --background: oklch(0.98 0.012 85);
+  --foreground: oklch(0.24 0.02 60);
+  --card: oklch(0.995 0.006 85);
+  --card-foreground: oklch(0.24 0.02 60);
+  --popover: oklch(0.995 0.006 85);
+  --popover-foreground: oklch(0.24 0.02 60);
+  --primary: oklch(0.62 0.16 55);
+  --primary-foreground: oklch(0.99 0.01 85);
+  --secondary: oklch(0.94 0.022 80);
+  --secondary-foreground: oklch(0.32 0.04 55);
+  --muted: oklch(0.945 0.016 80);
+  --muted-foreground: oklch(0.52 0.03 62);
+  --accent: oklch(0.92 0.045 75);
+  --accent-foreground: oklch(0.32 0.06 55);
+  --destructive: oklch(0.55 0.2 27);
+  --border: oklch(0.88 0.022 75);
+  --input: oklch(0.88 0.022 75);
+  --ring: oklch(0.62 0.16 55);
+  --radius: 0.5rem;
+  --chart-1: oklch(0.62 0.16 55);
+  --chart-2: oklch(0.72 0.14 75);
+  --chart-3: oklch(0.55 0.1 40);
+  --chart-4: oklch(0.78 0.11 95);
+  --chart-5: oklch(0.45 0.08 50);
+  --sidebar: oklch(0.96 0.016 82);
+  --sidebar-foreground: oklch(0.24 0.02 60);
+  --sidebar-border: oklch(0.88 0.022 75);
+}
+html[data-skin="broadcast"].dark {
+  --background: oklch(0.19 0.018 55);
+  --foreground: oklch(0.94 0.02 80);
+  --card: oklch(0.235 0.024 55);
+  --card-foreground: oklch(0.94 0.02 80);
+  --popover: oklch(0.235 0.024 55);
+  --popover-foreground: oklch(0.94 0.02 80);
+  --primary: oklch(0.76 0.16 62);
+  --primary-foreground: oklch(0.2 0.03 55);
+  --secondary: oklch(0.3 0.03 55);
+  --secondary-foreground: oklch(0.94 0.02 80);
+  --muted: oklch(0.3 0.026 55);
+  --muted-foreground: oklch(0.72 0.03 70);
+  --accent: oklch(0.35 0.05 60);
+  --accent-foreground: oklch(0.94 0.03 80);
+  --destructive: oklch(0.68 0.19 25);
+  --border: oklch(0.85 0.06 70 / 16%);
+  --input: oklch(0.85 0.06 70 / 20%);
+  --ring: oklch(0.76 0.16 62);
+  --chart-1: oklch(0.76 0.16 62);
+  --chart-2: oklch(0.82 0.13 85);
+  --chart-3: oklch(0.65 0.12 40);
+  --chart-4: oklch(0.88 0.1 100);
+  --chart-5: oklch(0.55 0.1 45);
+  --sidebar: oklch(0.235 0.024 55);
+  --sidebar-foreground: oklch(0.94 0.02 80);
+  --sidebar-border: oklch(0.85 0.06 70 / 16%);
+}
+
+/* ══════════════ 编辑部 newsroom ══════════════
+   米黄纸 + 靛蓝墨 + 报头红，方正小圆角，标题走衬线。呼应「选题→稿件」的编辑部气质。 */
+html[data-skin="newsroom"] {
+  --background: oklch(0.962 0.014 92);
+  --foreground: oklch(0.24 0.024 265);
+  --card: oklch(0.99 0.008 92);
+  --card-foreground: oklch(0.24 0.024 265);
+  --popover: oklch(0.99 0.008 92);
+  --popover-foreground: oklch(0.24 0.024 265);
+  --primary: oklch(0.38 0.11 262);
+  --primary-foreground: oklch(0.98 0.01 92);
+  --secondary: oklch(0.92 0.018 92);
+  --secondary-foreground: oklch(0.3 0.05 262);
+  --muted: oklch(0.925 0.016 92);
+  --muted-foreground: oklch(0.48 0.025 265);
+  --accent: oklch(0.9 0.035 40);
+  --accent-foreground: oklch(0.44 0.16 27);
+  --destructive: oklch(0.5 0.2 27);
+  --border: oklch(0.85 0.02 90);
+  --input: oklch(0.85 0.02 90);
+  --ring: oklch(0.38 0.11 262);
+  --radius: 0.25rem;
+  --chart-1: oklch(0.38 0.11 262);
+  --chart-2: oklch(0.5 0.19 27);
+  --chart-3: oklch(0.55 0.09 230);
+  --chart-4: oklch(0.62 0.11 145);
+  --chart-5: oklch(0.45 0.05 265);
+  --sidebar: oklch(0.94 0.016 92);
+  --sidebar-foreground: oklch(0.24 0.024 265);
+  --sidebar-border: oklch(0.85 0.02 90);
+}
+html[data-skin="newsroom"].dark {
+  --background: oklch(0.2 0.02 265);
+  --foreground: oklch(0.93 0.012 92);
+  --card: oklch(0.25 0.024 265);
+  --card-foreground: oklch(0.93 0.012 92);
+  --popover: oklch(0.25 0.024 265);
+  --popover-foreground: oklch(0.93 0.012 92);
+  --primary: oklch(0.72 0.13 255);
+  --primary-foreground: oklch(0.18 0.03 265);
+  --secondary: oklch(0.31 0.028 265);
+  --secondary-foreground: oklch(0.93 0.012 92);
+  --muted: oklch(0.31 0.026 265);
+  --muted-foreground: oklch(0.72 0.02 265);
+  --accent: oklch(0.38 0.08 20);
+  --accent-foreground: oklch(0.93 0.03 40);
+  --destructive: oklch(0.65 0.2 27);
+  --border: oklch(0.8 0.03 265 / 16%);
+  --input: oklch(0.8 0.03 265 / 20%);
+  --ring: oklch(0.72 0.13 255);
+  --chart-1: oklch(0.72 0.13 255);
+  --chart-2: oklch(0.65 0.2 27);
+  --chart-3: oklch(0.7 0.1 220);
+  --chart-4: oklch(0.72 0.12 145);
+  --chart-5: oklch(0.6 0.06 265);
+  --sidebar: oklch(0.25 0.024 265);
+  --sidebar-foreground: oklch(0.93 0.012 92);
+  --sidebar-border: oklch(0.8 0.03 265 / 16%);
+}
+/* 编辑部：标题走衬线，像报纸的报头 */
+html[data-skin="newsroom"] h1,
+html[data-skin="newsroom"] h2,
+html[data-skin="newsroom"] [data-slot="card-title"] {
+  font-family: "Songti SC", Georgia, "Times New Roman", serif;
+  letter-spacing: 0;
+}
+
+/* ══════════════ 信号 signal ══════════════
+   深板岩 + 青绿霓虹 + 品红点缀，为深色而生。呼应「广播矩阵 / 数据流」。 */
+html[data-skin="signal"] {
+  --background: oklch(0.975 0.006 220);
+  --foreground: oklch(0.21 0.02 250);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.02 250);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.02 250);
+  --primary: oklch(0.52 0.11 195);
+  --primary-foreground: oklch(0.99 0.005 220);
+  --secondary: oklch(0.93 0.012 220);
+  --secondary-foreground: oklch(0.28 0.04 220);
+  --muted: oklch(0.94 0.01 220);
+  --muted-foreground: oklch(0.5 0.02 240);
+  --accent: oklch(0.9 0.04 195);
+  --accent-foreground: oklch(0.3 0.07 195);
+  --destructive: oklch(0.58 0.22 15);
+  --border: oklch(0.88 0.014 220);
+  --input: oklch(0.88 0.014 220);
+  --ring: oklch(0.52 0.11 195);
+  --radius: 0.375rem;
+  --chart-1: oklch(0.6 0.13 190);
+  --chart-2: oklch(0.6 0.2 330);
+  --chart-3: oklch(0.55 0.15 265);
+  --chart-4: oklch(0.68 0.14 145);
+  --chart-5: oklch(0.7 0.15 85);
+  --sidebar: oklch(0.955 0.008 220);
+  --sidebar-foreground: oklch(0.21 0.02 250);
+  --sidebar-border: oklch(0.88 0.014 220);
+}
+html[data-skin="signal"].dark {
+  --background: oklch(0.16 0.02 250);
+  --foreground: oklch(0.92 0.015 200);
+  --card: oklch(0.21 0.025 250);
+  --card-foreground: oklch(0.92 0.015 200);
+  --popover: oklch(0.21 0.025 250);
+  --popover-foreground: oklch(0.92 0.015 200);
+  --primary: oklch(0.82 0.15 178);
+  --primary-foreground: oklch(0.16 0.03 250);
+  --secondary: oklch(0.27 0.03 250);
+  --secondary-foreground: oklch(0.92 0.015 200);
+  --muted: oklch(0.27 0.028 250);
+  --muted-foreground: oklch(0.7 0.03 210);
+  --accent: oklch(0.33 0.06 190);
+  --accent-foreground: oklch(0.88 0.12 178);
+  --destructive: oklch(0.68 0.21 15);
+  --border: oklch(0.8 0.08 190 / 14%);
+  --input: oklch(0.8 0.08 190 / 18%);
+  --ring: oklch(0.82 0.15 178);
+  --chart-1: oklch(0.82 0.15 178);
+  --chart-2: oklch(0.72 0.2 330);
+  --chart-3: oklch(0.68 0.16 265);
+  --chart-4: oklch(0.78 0.16 145);
+  --chart-5: oklch(0.85 0.15 95);
+  --sidebar: oklch(0.21 0.025 250);
+  --sidebar-foreground: oklch(0.92 0.015 200);
+  --sidebar-border: oklch(0.8 0.08 190 / 14%);
+}
+/* 信号：深色下给卡片一圈极淡的青色辉光，像面板上的指示灯 */
+html[data-skin="signal"].dark [data-slot="card"] {
+  box-shadow:
+    0 0 0 1px oklch(0.82 0.15 178 / 7%),
+    0 1px 12px oklch(0.82 0.15 178 / 5%);
+}

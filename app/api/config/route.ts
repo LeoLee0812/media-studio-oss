@@ -1,0 +1,199 @@
+import { NextResponse } from "next/server";
+import {
+  getStoredConfig,
+  updateStoredConfig,
+  resolveLlmConfig,
+  resolveImageConfig,
+  resolveRssRetentionDays,
+  resolveResendConfig,
+  resolveImageSearchConfig,
+  resolveProviderConfig,
+  isSafePublicUrl,
+  type AppConfig,
+  type RssFeedConfig,
+} from "@/lib/config";
+import { LLM_PROVIDERS, LLM_PROVIDER_IDS, isLlmProvider } from "@/lib/llm-providers";
+import { getSyncState } from "@/lib/queries";
+import { isWritingStyle, normalizeStyle } from "@/lib/styles";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+// 返回前端所需的运行时配置。安全：绝不回传明文 API key，只给「是否已配置 + 来源 + 非密字段」。
+export async function GET() {
+  const [llm, image, search, rssRetentionDays, resend, stored, rss] =
+    await Promise.all([
+      resolveLlmConfig(),
+      resolveImageConfig(),
+      resolveImageSearchConfig(),
+      resolveRssRetentionDays(),
+      resolveResendConfig(),
+      getStoredConfig(),
+      getSyncState("rss").catch(() => null),
+    ]);
+  // 私有单人工作台（全站门禁之后）：API key 明文回传给设置页做「点击可见」展示。
+  // 三家各自的 key/model 一次性给全，切换引擎时前端直接回显、不用再请求。
+  const llmProviders = Object.fromEntries(
+    await Promise.all(
+      LLM_PROVIDER_IDS.map(async (id) => [id, await resolveProviderConfig(id, stored)] as const),
+    ),
+  );
+  return NextResponse.json({
+    // 默认写作风格（选题页/洗稿页的初始选中项）
+    writingStyle: normalizeStyle(stored.writingStyle),
+    llmEnabled: llm.apiKey.length > 0,
+    llmProvider: llm.provider, // deepseek | qwen | kimi | yunwu
+    model: llm.model,
+    llmSource: llm.source, // db | env | none
+    // { [provider]: { apiKey, model, source } }
+    llmProviders,
+    imageEnabled: image.apiKey.length > 0,
+    imageApiKey: image.apiKey,
+    imageBase: image.base,
+    imageModel: image.model,
+    imageQuality: image.quality,
+    imageSource: image.source,
+    // 文章配图搜图（Pexels / Pixabay）
+    searchEnabled: search.pexelsKey.length > 0 || search.pixabayKey.length > 0,
+    searchSource: search.source,
+    pexelsApiKey: search.pexelsKey,
+    pixabayApiKey: search.pixabayKey,
+    rssRetentionDays,
+    // 邮件通知（key 只报是否配置）
+    resendEnabled: resend.apiKey.length > 0,
+    resendSource: resend.source,
+    dailySummary: stored.dailySummary === true,
+    // RSS 订阅源（url/板块/备注非密，直接回传供编辑）
+    rssFeeds: Array.isArray(stored.rssFeeds) ? stored.rssFeeds : [],
+    rssSync: rss,
+  });
+}
+
+// 保存配置（设置页）。只更新传入的字段；key 类字段传空串则跳过（避免误清），
+// 传入约定占位串 "__CLEAR__" 才显式清空。
+const CLEAR = "__CLEAR__";
+
+// 密钥类字段写入规则：非空才写；显式清空需传 __CLEAR__。多处校验函数共用。
+function applySecretField(patch: Partial<AppConfig>, body: Record<string, unknown>, f: keyof AppConfig) {
+  const v = body[f];
+  if (typeof v === "string") {
+    if (v === CLEAR) patch[f] = "" as never;
+    else if (v.trim()) patch[f] = v.trim() as never;
+  }
+}
+
+// 非密字段写入规则：非空即写。多处校验函数共用。
+function applyPlainField(patch: Partial<AppConfig>, body: Record<string, unknown>, f: keyof AppConfig) {
+  const v = body[f];
+  if (typeof v === "string" && v.trim()) patch[f] = v.trim() as never;
+}
+
+// 文案引擎域：提供方 + 默认写作风格 + 各家 key/model（字段名从注册表取，加一家引擎这里不用动）
+function validateLlmPatch(patch: Partial<AppConfig>, body: Record<string, unknown>) {
+  if (isLlmProvider(body.llmProvider)) patch.llmProvider = body.llmProvider;
+  if (isWritingStyle(body.writingStyle)) patch.writingStyle = body.writingStyle;
+  for (const id of LLM_PROVIDER_IDS) {
+    applySecretField(patch, body, LLM_PROVIDERS[id].keyField);
+    applyPlainField(patch, body, LLM_PROVIDERS[id].modelField);
+  }
+}
+
+// 生图域：base 先做 SSRF 校验（生图请求会带真实 key 的 Bearer 头），非法直接 400 不写库
+function validateImagePatch(patch: Partial<AppConfig>, body: Record<string, unknown>): string | null {
+  if (typeof body.imageApiBase === "string" && body.imageApiBase.trim()) {
+    if (!isSafePublicUrl(body.imageApiBase.trim())) {
+      return "生图 API Base 非法：必须是 http(s) 且不能指向内网/环回地址";
+    }
+  }
+  applySecretField(patch, body, "imageApiKey");
+  applyPlainField(patch, body, "imageApiBase");
+  applyPlainField(patch, body, "imageModel");
+  applyPlainField(patch, body, "imageQuality");
+  return null;
+}
+
+// 文章配图搜图域：Pexels / Pixabay 两把 key
+function validateSearchPatch(patch: Partial<AppConfig>, body: Record<string, unknown>) {
+  applySecretField(patch, body, "pexelsApiKey");
+  applySecretField(patch, body, "pixabayApiKey");
+}
+
+// 素材翻译域：开关 + 引擎 + 模型（key 复用所选引擎已存的，不在这里收）
+function validateTranslatePatch(patch: Partial<AppConfig>, body: Record<string, unknown>) {
+  if (typeof body.translateEnabled === "boolean") patch.translateEnabled = body.translateEnabled;
+  if (isLlmProvider(body.translateProvider)) patch.translateProvider = body.translateProvider;
+  applyPlainField(patch, body, "translateModel");
+}
+
+// 轻量任务引擎域：标题重写/小红书高亮/emoji 用的引擎 + 模型（key 同样复用）
+function validateFlashPatch(patch: Partial<AppConfig>, body: Record<string, unknown>) {
+  if (isLlmProvider(body.flashProvider)) patch.flashProvider = body.flashProvider;
+  applyPlainField(patch, body, "flashModel");
+}
+
+// 采集保留天数域：数字且 >0 才写
+function validateRetentionPatch(patch: Partial<AppConfig>, body: Record<string, unknown>) {
+  const rssDays = Number(body.rssRetentionDays);
+  if (Number.isFinite(rssDays) && rssDays > 0) patch.rssRetentionDays = Math.floor(rssDays);
+}
+
+// RSS 源列表域：传数组即整体覆盖（含空数组 = 清空）。逐条校验 url 防 SSRF；
+// 板块是自由分类字符串：trim、超长截断 30 字符、空的归一化成「未分类」。
+function validateRssFeedsPatch(patch: Partial<AppConfig>, body: Record<string, unknown>): string | null {
+  if (!Array.isArray(body.rssFeeds)) return null;
+  const feeds: RssFeedConfig[] = [];
+  for (const raw of body.rssFeeds) {
+    if (!raw || typeof raw !== "object") continue;
+    const f = raw as Record<string, unknown>;
+    const url = typeof f.url === "string" ? f.url.trim() : "";
+    if (!url) continue; // 空行直接忽略
+    if (!isSafePublicUrl(url)) {
+      return `RSS 源地址非法（必须 http(s) 且非内网）：${url}`;
+    }
+    const pillar = (typeof f.pillar === "string" ? f.pillar.trim().slice(0, 30) : "") || "未分类";
+    const label = typeof f.label === "string" && f.label.trim() ? f.label.trim() : undefined;
+    feeds.push({ url, pillar, ...(label ? { label } : {}) });
+  }
+  patch.rssFeeds = feeds;
+  return null;
+}
+
+// 邮件通知域：Resend key + 每日摘要开关
+function validateNotifyPatch(patch: Partial<AppConfig>, body: Record<string, unknown>) {
+  applySecretField(patch, body, "resendApiKey");
+  if (typeof body.dailySummary === "boolean") patch.dailySummary = body.dailySummary;
+}
+
+export async function PUT(req: Request) {
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const patch: Partial<AppConfig> = {};
+
+  const imageError = validateImagePatch(patch, body);
+  if (imageError) return NextResponse.json({ error: imageError }, { status: 400 });
+
+  validateLlmPatch(patch, body);
+  validateSearchPatch(patch, body);
+  validateTranslatePatch(patch, body);
+  validateFlashPatch(patch, body);
+  validateRetentionPatch(patch, body);
+  validateNotifyPatch(patch, body);
+
+  const rssError = validateRssFeedsPatch(patch, body);
+  if (rssError) return NextResponse.json({ error: rssError }, { status: 400 });
+
+  const next = await updateStoredConfig(patch);
+  return NextResponse.json({
+    ok: true,
+    saved: Object.keys(patch),
+    hasDeepseekKey: !!next.deepseekApiKey,
+    hasImageKey: !!next.imageApiKey,
+    hasResendKey: !!next.resendApiKey,
+    llmModel: next.llmModel ?? null,
+    imageApiBase: next.imageApiBase ?? null,
+    imageModel: next.imageModel ?? null,
+    imageQuality: next.imageQuality ?? null,
+    rssRetentionDays: next.rssRetentionDays ?? null,
+    dailySummary: next.dailySummary === true,
+    rssFeeds: next.rssFeeds ?? [],
+  });
+}

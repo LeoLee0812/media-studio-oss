@@ -1,0 +1,256 @@
+/*
+ * Windows XP（Luna 蓝）皮肤。
+ *
+ * 跟其它皮肤不同：XP 的辨识度不在配色，而在「形状」——斜面立体按钮、凹陷输入框、
+ * 蓝色渐变标题栏、任务栏、直角。所以除了变量，还需要下面这层结构性覆盖。
+ *
+ * 为什么这些裸选择器压得住 Tailwind 的 utility 类：
+ * Tailwind v4 把 utilities 放进 @layer，本文件的规则是 unlayered，
+ * 按 CSS 级联层规则，无层样式一律赢过任何层内样式，因此不需要 !important。
+ *
+ * 深色版复刻的是 XP 的「高对比度黑」辅助功能主题，不是凭空造的夜间色。
+ */
+
+html[data-skin="xp"] {
+  --background: #ece9d8; /* Luna 经典面板灰 */
+  --foreground: #000000;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+  --primary: #2a5fcc;
+  --primary-foreground: #ffffff;
+  --secondary: #d8e4f8;
+  --secondary-foreground: #0a246a;
+  --muted: #e3e1d3;
+  --muted-foreground: #4a4a48;
+  --accent: #d8e4f8; /* XP 的悬停浅蓝 */
+  --accent-foreground: #0a246a;
+  --destructive: #c8102e;
+  --border: #aca899;
+  --input: #7f9db9; /* XP 输入框特有的灰蓝边 */
+  --ring: #316ac5;
+  --radius: 3px;
+  --chart-1: #2a5fcc;
+  --chart-2: #3aa346;
+  --chart-3: #e08a00;
+  --chart-4: #c8102e;
+  --chart-5: #7b5ea7;
+  --sidebar: #ece9d8;
+  --sidebar-foreground: #000000;
+  --sidebar-border: #aca899;
+
+  font-family: Tahoma, Verdana, Geneva, "Songti SC", SimSun, sans-serif;
+  -webkit-font-smoothing: auto; /* 关掉平滑，还原当年那股硬朗的像素感 */
+}
+html[data-skin="xp"].dark {
+  --background: #000000;
+  --foreground: #ffffff;
+  --card: #1a1a1a;
+  --card-foreground: #ffffff;
+  --popover: #1a1a1a;
+  --popover-foreground: #ffffff;
+  --primary: #4d8ce8;
+  --primary-foreground: #000000;
+  --secondary: #2b2b2b;
+  --secondary-foreground: #ffffff;
+  --muted: #262626;
+  --muted-foreground: #b8b8b8;
+  --accent: #1f3a5f;
+  --accent-foreground: #8fc0ff;
+  --border: #6a6a6a;
+  --input: #6a6a6a;
+  --ring: #4d8ce8;
+  --sidebar: #1a1a1a;
+  --sidebar-foreground: #ffffff;
+  --sidebar-border: #6a6a6a;
+}
+
+/* 字体也覆盖 Tailwind 的 font-sans（Geist），否则 body 上的 font-sans 会盖回去 */
+html[data-skin="xp"] body,
+html[data-skin="xp"] button,
+html[data-skin="xp"] input,
+html[data-skin="xp"] select,
+html[data-skin="xp"] textarea {
+  font-family: Tahoma, Verdana, Geneva, "Songti SC", SimSun, sans-serif;
+}
+
+/* 直角化：XP 没有大圆角。圆点/头像的 rounded-full 保留 */
+html[data-skin="xp"] :is(.rounded, .rounded-md, .rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl) {
+  border-radius: 3px;
+}
+
+/* ── 顶栏 = Luna 窗口标题栏 ── */
+html[data-skin="xp"] header.sticky {
+  background: linear-gradient(180deg, #0997ff 0%, #0053ee 8%, #0050ee 40%, #0362ec 88%, #0053ee 100%);
+  border-bottom: 1px solid #003c74;
+  backdrop-filter: none;
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+html[data-skin="xp"] header.sticky a,
+html[data-skin="xp"] header.sticky button {
+  color: #ffffff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+  border-radius: 3px;
+}
+html[data-skin="xp"] header.sticky a:hover,
+html[data-skin="xp"] header.sticky button:hover {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+/* 当前页 = 标题栏上被按下的那一格 */
+html[data-skin="xp"] header.sticky a[class*="bg-secondary"] {
+  background: rgba(0, 0, 0, 0.22);
+  box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.35);
+  color: #ffffff;
+}
+
+/* ── 小屏底部导航 = 任务栏 ── */
+html[data-skin="xp"] nav.fixed {
+  background: linear-gradient(180deg, #3a93ff 0%, #2b7bea 4%, #245edb 12%, #1f4fd0 92%, #1941b8 100%);
+  border-top: 1px solid #1941b8;
+  backdrop-filter: none;
+  box-shadow: inset 0 1px 0 #6ab5ff;
+}
+html[data-skin="xp"] nav.fixed a {
+  color: #e8f1ff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+html[data-skin="xp"] nav.fixed a[class*="text-primary"] {
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.2);
+  box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+/* ── 卡片 = XP 窗口，卡片头 = 窗口标题栏 ── */
+html[data-skin="xp"] [data-slot="card"] {
+  border: 1px solid #0053ee;
+  border-radius: 3px 3px 0 0;
+  background: #ffffff;
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+html[data-skin="xp"] [data-slot="card-header"] {
+  background: linear-gradient(180deg, #0997ff 0%, #0053ee 10%, #0050ee 45%, #0362ec 90%, #0053ee 100%);
+  border-bottom: 1px solid #003c74;
+  padding: 0.5rem 0.75rem;
+}
+html[data-skin="xp"] [data-slot="card-header"] :is([data-slot="card-title"], h1, h2, h3) {
+  color: #ffffff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+  font-weight: 700;
+}
+html[data-skin="xp"] [data-slot="card-header"] [data-slot="card-description"] {
+  color: #e8f1ff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+/* 标题栏里的图标块（登录页的 logo 之类）：底色让位给标题栏，图标转白 */
+html[data-skin="xp"] [data-slot="card-header"] :is(.bg-muted, .bg-secondary, .bg-primary, .bg-accent) {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+html[data-skin="xp"] [data-slot="card-header"] svg {
+  color: #ffffff;
+}
+html[data-skin="xp"] [data-slot="card-content"] {
+  padding-top: 0.75rem;
+}
+html[data-skin="xp"].dark [data-slot="card"] {
+  border-color: #6a6a6a;
+  background: #1a1a1a;
+}
+
+/* ── 按钮 = 经典 3D 斜面 ── */
+html[data-skin="xp"] [data-slot="button"]:not([data-variant="link"]) {
+  border: 1px solid #003c74;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #ffffff 0%, #f2f1ea 45%, #e5e3d6 52%, #eeece1 100%);
+  color: #000000;
+  text-shadow: none;
+  box-shadow:
+    inset 0 0 0 1px #ffffff,
+    0 1px 1px rgba(0, 0, 0, 0.08);
+}
+/* XP 按钮悬停时那圈标志性的橙色高亮 */
+html[data-skin="xp"] [data-slot="button"]:not([data-variant="link"]):hover {
+  border-color: #e5a400;
+  background: linear-gradient(180deg, #ffffff 0%, #fdf6e4 45%, #f7ecc9 52%, #fdf7e6 100%);
+  box-shadow:
+    inset 0 0 0 1px #fff3cf,
+    0 0 4px rgba(240, 170, 20, 0.55);
+}
+html[data-skin="xp"] [data-slot="button"]:not([data-variant="link"]):active {
+  background: linear-gradient(180deg, #dedbcd 0%, #e8e6da 100%);
+  box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.28);
+}
+/* 主按钮 = XP 的「默认按钮」：多一圈深蓝描边 */
+html[data-skin="xp"] [data-slot="button"][data-variant="default"] {
+  border-color: #2a5fcc;
+  box-shadow:
+    inset 0 0 0 1px #cfe0f7,
+    0 0 0 1px rgba(42, 95, 204, 0.35);
+}
+/* ghost = 工具栏按钮：平时无边，悬停才浮起来 */
+html[data-skin="xp"] [data-slot="button"][data-variant="ghost"] {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+html[data-skin="xp"] [data-slot="button"][data-variant="ghost"]:hover {
+  background: #c1d2ee;
+  border-color: #316ac5;
+  box-shadow: none;
+}
+html[data-skin="xp"] [data-slot="button"][data-variant="destructive"] {
+  color: #a00d24;
+  font-weight: 700;
+}
+
+/* ── 输入类 = 凹陷 ── */
+html[data-skin="xp"] :is([data-slot="input"], [data-slot="textarea"], [data-slot="select"]) {
+  border: 1px solid #7f9db9;
+  border-radius: 0;
+  background: #ffffff;
+  color: #000000;
+  box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.1);
+}
+html[data-skin="xp"] :is([data-slot="input"], [data-slot="textarea"], [data-slot="select"]):focus-visible {
+  outline: none;
+  border-color: #316ac5;
+  box-shadow:
+    inset 1px 1px 2px rgba(0, 0, 0, 0.1),
+    0 0 0 1px #316ac5;
+}
+html[data-skin="xp"].dark :is([data-slot="input"], [data-slot="textarea"], [data-slot="select"]) {
+  background: #0d0d0d;
+  color: #ffffff;
+  border-color: #6a6a6a;
+}
+
+/* ── 徽章 = 方角小标签 ── */
+html[data-skin="xp"] [data-slot="badge"] {
+  border-radius: 2px;
+}
+
+/* ── 选中文字 / 滚动条：XP 的蓝 ── */
+html[data-skin="xp"] ::selection {
+  background: #316ac5;
+  color: #ffffff;
+}
+html[data-skin="xp"] ::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+html[data-skin="xp"] ::-webkit-scrollbar-track {
+  background: #eef2fb;
+  border-left: 1px solid #d4d0c8;
+}
+html[data-skin="xp"] ::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, #eef4fe 0%, #b4cdf5 25%, #6b9ce8 100%);
+  border: 1px solid #3d6fbf;
+  border-radius: 2px;
+}
+html[data-skin="xp"] ::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(90deg, #f4f8ff 0%, #c8daf8 25%, #86b0ef 100%);
+}

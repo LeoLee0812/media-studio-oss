@@ -1,0 +1,61 @@
+import { NextResponse } from "next/server";
+import { runDailyIngest, type DailyIngestResult } from "@/lib/ingest";
+import { sendEmail, escapeHtml } from "@/lib/notify";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
+// 全站唯一的每日定时任务入口（vercel.json 的 cron 指到这里，带 Bearer CRON_SECRET）：
+//   /api/cron/daily        —— 编排入口（RSS 采集 + 翻译 + 清理 + 摘要/告警邮件）
+//   /api/ingest/rss   POST —— 纯手动 RSS 采集（设置页按钮）
+//   /api/cron/cleanup POST —— 纯手动清理（设置页按钮）
+// 各步错误隔离；有失败步骤时发告警邮件（notify 静默失败，不影响响应）。
+
+// 从每日结果里汇总各步错误，供告警邮件用
+function collectErrors(result: DailyIngestResult): string[] {
+  const errors: string[] = [];
+  if ("error" in result.rss) {
+    errors.push(`RSS 采集失败：${result.rss.error}`);
+  } else {
+    // feed 级局部失败也提一嘴（不影响 ok 判定）
+    for (const f of result.rss.feeds) {
+      if (f.error) errors.push(`RSS 源「${f.label ?? f.url}」失败：${f.error}`);
+    }
+  }
+  // 清理失败不影响 ok 判定（素材照常采集），但要告警：不修就是无限增长
+  if ("error" in result.cleanup) errors.push(`素材清理失败：${result.cleanup.error}`);
+  return errors;
+}
+
+const siteUrl = process.env.SITE_URL || "http://localhost:3000";
+
+export async function GET() {
+  try {
+    const result = await runDailyIngest();
+    const errors = collectErrors(result);
+    if (errors.length > 0) {
+      await sendEmail({
+        subject: "Media Studio 每日采集有步骤失败",
+        html: `<div style="font-family:system-ui,sans-serif;line-height:1.6">
+          <p>每日采集任务部分失败（${new Date().toISOString()}）：</p>
+          <ul>${errors.map((e) => `<li>${escapeHtml(e)}</li>`).join("")}</ul>
+          <p><a href="${siteUrl}/settings">→ 打开设置页查看采集状态</a></p>
+        </div>`,
+      });
+    }
+    return NextResponse.json(result);
+  } catch (e) {
+    // 编排本身炸了（理论上各步已隔离，这里是最后兜底）：发告警再返回 500
+    const msg = e instanceof Error ? e.message : String(e);
+    await sendEmail({
+      subject: "Media Studio 每日采集任务失败",
+      html: `<div style="font-family:system-ui,sans-serif;line-height:1.6">
+        <p>每日采集任务整体失败（${new Date().toISOString()}）：</p>
+        <p style="color:#b91c1c">${escapeHtml(msg)}</p>
+        <p><a href="${siteUrl}/settings">→ 打开设置页查看采集状态</a></p>
+      </div>`,
+    });
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
