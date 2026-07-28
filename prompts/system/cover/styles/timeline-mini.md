@@ -1,0 +1,3 @@
+整体风格为时间微缩风：45° 等距俯视视角，画面是一个横向展开的微型 3D 时间轴展台，像微型博物馆、桌面沙盘或精致的教育插画。底座被分成 4-6 个清晰的时代区域，从左到右展示主题从早期到现代的演化；每个区域放置该时代最具代表性的物件、工具、设备或环境，并加入少量微型人物与场景互动（人物面部不必细致）。材质柔和干净、精致，PBR 质感，光线均匀无强阴影，背景是纯色或柔和渐变。宽幅画面时展台横贯右侧主体区，标题与说明留在左侧文字栏。不要复杂写实场景，不要拥挤，不要卡通夸张，不要高饱和杂乱，不要密集文字。
+
+Clean isometric miniature 3D timeline diorama style, 45-degree top-down perspective, horizontal stepped base divided into four to six clear time periods, each section shows era-specific objects, tools, environments or technology, tiny stylized figures interacting with each stage, soft refined materials, realistic PBR shading, neutral balanced lighting, clean solid or softly gradient background, educational museum-like miniature evolution diagram, not cluttered, not cartoonish, not dense infographic.
