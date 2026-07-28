@@ -42,11 +42,13 @@ export async function GET() {
     // 默认写作风格（选题页/洗稿页的初始选中项）
     writingStyle: normalizeStyle(stored.writingStyle),
     llmEnabled: llm.apiKey.length > 0,
-    llmProvider: llm.provider, // deepseek | qwen | kimi | yunwu
+    llmProvider: llm.provider, // deepseek | qwen | kimi | relay
     model: llm.model,
     llmSource: llm.source, // db | env | none
-    // { [provider]: { apiKey, model, source } }
+    // { [provider]: { apiKey, model, baseUrl, source } }
     llmProviders,
+    // 聚合中转站 Base URL（DB 存的原始值；空 = 用 env/默认示例）
+    relayBaseUrl: stored.relayBaseUrl ?? "",
     imageEnabled: image.apiKey.length > 0,
     imageApiKey: image.apiKey,
     imageBase: image.base,
@@ -89,13 +91,22 @@ function applyPlainField(patch: Partial<AppConfig>, body: Record<string, unknown
 }
 
 // 文案引擎域：提供方 + 默认写作风格 + 各家 key/model（字段名从注册表取，加一家引擎这里不用动）
-function validateLlmPatch(patch: Partial<AppConfig>, body: Record<string, unknown>) {
+// relay（聚合中转）额外收 Base URL：空串 = 清除（回落 env/默认示例）；非空须过 SSRF 校验
+// （文案请求会带真实 key 的 Bearer 头打到这个地址），非法直接 400 不写库。
+function validateLlmPatch(patch: Partial<AppConfig>, body: Record<string, unknown>): string | null {
   if (isLlmProvider(body.llmProvider)) patch.llmProvider = body.llmProvider;
   if (isWritingStyle(body.writingStyle)) patch.writingStyle = body.writingStyle;
   for (const id of LLM_PROVIDER_IDS) {
     applySecretField(patch, body, LLM_PROVIDERS[id].keyField);
     applyPlainField(patch, body, LLM_PROVIDERS[id].modelField);
   }
+  if (typeof body.relayBaseUrl === "string") {
+    const v = body.relayBaseUrl.trim().replace(/\/+$/, "");
+    if (!v) patch.relayBaseUrl = "";
+    else if (!isSafePublicUrl(v)) return "中转站 Base URL 非法：必须是 http(s) 且不能指向内网/环回地址";
+    else patch.relayBaseUrl = v;
+  }
+  return null;
 }
 
 // 生图域：base 先做 SSRF 校验（生图请求会带真实 key 的 Bearer 头），非法直接 400 不写库
@@ -171,7 +182,8 @@ export async function PUT(req: Request) {
   const imageError = validateImagePatch(patch, body);
   if (imageError) return NextResponse.json({ error: imageError }, { status: 400 });
 
-  validateLlmPatch(patch, body);
+  const llmError = validateLlmPatch(patch, body);
+  if (llmError) return NextResponse.json({ error: llmError }, { status: 400 });
   validateSearchPatch(patch, body);
   validateTranslatePatch(patch, body);
   validateFlashPatch(patch, body);

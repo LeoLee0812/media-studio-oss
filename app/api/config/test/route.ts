@@ -34,10 +34,16 @@ export async function POST(req: Request) {
     if (kind === "llm") {
       // provider 可由前端显式指定（测当前编辑中的引擎），缺省用生效配置的 provider
       const provider = isLlmProvider(body.provider) ? body.provider : (await resolveLlmConfig()).provider;
-      const apiKey = inputKey || (await resolveProviderConfig(provider)).apiKey;
+      const resolved = await resolveProviderConfig(provider);
+      const apiKey = inputKey || resolved.apiKey;
       if (!apiKey) return NextResponse.json({ ok: false, error: "尚未配置 API Key，请先填入再测试" });
-      // 三家都走 GET /models，成功即证明 key 可用；顺带把模型数报给前端
-      const r = await fetchProviderModels(provider, apiKey);
+      // relay（聚合中转）引擎支持带上还没保存的 Base URL 一起测；用户可写 → 过 SSRF 校验
+      const inputBase = typeof body.baseUrl === "string" ? body.baseUrl.trim().replace(/\/+$/, "") : "";
+      if (inputBase && !isSafePublicUrl(inputBase)) {
+        return NextResponse.json({ ok: false, error: "Base URL 非法：必须是 http(s) 且不能指向内网/环回地址" });
+      }
+      // 各家都走 GET /models，成功即证明 key 可用；顺带把模型数报给前端
+      const r = await fetchProviderModels(provider, apiKey, inputBase || resolved.baseUrl);
       return NextResponse.json({ ok: r.ok, error: r.error, modelCount: r.models.length });
     }
 

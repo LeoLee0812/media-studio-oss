@@ -18,8 +18,10 @@ export interface SettingsInit {
   llmEnabled: boolean;
   llmProvider: LlmProvider;
   llmSource: "db" | "env" | "none";
-  /** 三家引擎各自已存的 key/model，切换引擎时直接回显 */
+  /** 各家引擎各自已存的 key/model，切换引擎时直接回显 */
   llmProviders: Record<LlmProvider, ProviderState>;
+  /** 聚合中转站 Base URL（DB 存的原始值；空 = 用 env/默认示例） */
+  relayBaseUrl: string;
   imageEnabled: boolean;
   imageApiKey: string;
   imageBase: string;
@@ -61,6 +63,7 @@ export function SettingsClient({ init }: { init: SettingsInit }) {
         source={init.llmSource}
         provider={init.llmProvider}
         providers={init.llmProviders}
+        relayBaseUrl={init.relayBaseUrl}
       />
 
       <FlashCard

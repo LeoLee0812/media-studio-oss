@@ -2,6 +2,15 @@
 
 维护规则：每次功能改动在本文件顶部追加条目——日期 + 改了什么 + 为什么 + 涉及文件。
 
+## 2026-07-28 第四引擎中立化：「云雾 API」→「聚合中转站（OpenAI 兼容）」+ Base URL 可配
+
+开源项目不该内置像广告的第三方默认值——yunwu.ai 降级为「可替换的默认示例」，任何 OpenAI 兼容端点均可接入：
+
+- **引擎改名**：provider id `yunwu` → `relay`，配置字段 `yunwuApiKey`/`yunwuModel` → `relayApiKey`/`relayModel`，env `YUNWU_API_KEY`/`YUNWU_MODEL` → `RELAY_API_KEY`/`RELAY_MODEL`（全新开源项目，无存量配置兼容问题）；UI 文案与注册表说明改为供应商中立表述
+- **Base URL 可配置**：新增 `AppConfig.relayBaseUrl` + env `RELAY_BASE_URL`（`resolveProviderBaseUrl`，DB > env > 默认示例，SSRF 校验后落库）；生效值穿透 `buildModel` 与 `fetchProviderModels`，设置页 relay 引擎下显示「中转站 Base URL」输入框，「获取模型」「测试连接」都按待保存值优先测当前端点；deepseek/qwen/kimi 仍固定官方地址
+- **无广告立场落文档**：README 新增「第三方服务与中立声明」小节；docs/architecture.md 四引擎表与 env 清单改写 + 中立声明；docs/ingestion.md、.env.example、生图设置卡说明同步中立表述
+- 涉及：`lib/{llm-providers,config,llm,llm-models,illustrate-ai,illustrate-server}.ts`、`app/api/config/{route,models/route,test/route}.ts`、`app/settings/page.tsx`、`components/SettingsClient.tsx`、`components/settings/{LlmEngineCard,ImageEngineCard}.tsx`、`README.md`、`docs/{architecture,ingestion,wechat-assets}.md`、`.env.example`
+
 ## 2026-07-28 README 改版 + 在线演示站
 
 - README 新增三张界面截图（docs/screenshots/）、在线演示入口，安装改为两种方式：「AI 编程代理一键安装」（整段提示词复制给 Claude Code/Codex 即可代装）+ 可折叠的手动安装

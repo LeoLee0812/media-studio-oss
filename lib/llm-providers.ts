@@ -5,8 +5,12 @@
 // 各家都提供 OpenAI 兼容接口，因此：
 // - 模型列表统一走 GET {baseUrl}/models
 // - 模型调用统一走 createOpenAICompatible（DeepSeek 另有官方 SDK，见 lib/llm.ts）
+//
+// 第三方中立声明：本项目不推广、不背书任何第三方中转站/模型服务商。
+// relay 引擎接受任意 OpenAI 兼容端点，注册表里出现的默认地址（yunwu.ai）仅为
+// 「开箱能跑」的可替换示例，与本项目无任何合作、返佣或广告关系。
 
-export type LlmProvider = "deepseek" | "qwen" | "kimi" | "yunwu";
+export type LlmProvider = "deepseek" | "qwen" | "kimi" | "relay";
 
 export interface LlmProviderMeta {
   id: LlmProvider;
@@ -16,16 +20,16 @@ export interface LlmProviderMeta {
   baseUrl: string;
   /** 未配置模型时的兜底默认值 */
   defaultModel: string;
-  /** 用量/充值控制台 */
-  consoleUrl: string;
+  /** 用量/充值控制台；relay 引擎端点由用户自定，无固定控制台，留空则设置页不渲染该链接 */
+  consoleUrl?: string;
   /** API Key 输入框标签里的来源说明 */
   keyLabel: string;
   /** 模型输入框下方的说明文案 */
   modelHint: string;
   /** AppConfig 里存 key 的字段名（deepseek 是历史遗留的非对称命名） */
-  keyField: "deepseekApiKey" | "qwenApiKey" | "kimiApiKey" | "yunwuApiKey";
+  keyField: "deepseekApiKey" | "qwenApiKey" | "kimiApiKey" | "relayApiKey";
   /** AppConfig 里存模型的字段名 */
-  modelField: "llmModel" | "qwenModel" | "kimiModel" | "yunwuModel";
+  modelField: "llmModel" | "qwenModel" | "kimiModel" | "relayModel";
   /** env 兜底变量名 */
   keyEnv: string;
   modelEnv: string;
@@ -109,20 +113,22 @@ export const LLM_PROVIDERS: Record<LlmProvider, LlmProviderMeta> = {
     // k2.7-code / k3 / moonshot-v1-* 实测稳定。
     structuredFallback: (m) => (/^kimi-k2\.[56]/.test(m) ? "kimi-k3" : null),
   },
-  yunwu: {
-    id: "yunwu",
-    label: "云雾 API",
+  // 聚合中转引擎：接任意 OpenAI 兼容端点（自建 OneAPI / New API、OpenRouter、各类中转站均可）。
+  // baseUrl 只是未配置时的兜底默认示例，可被设置页「中转站 Base URL」或 env RELAY_BASE_URL 覆盖
+  // （见 lib/config.ts 的 resolveProviderConfig）。本项目与任何中转站无利益关系。
+  relay: {
+    id: "relay",
+    label: "聚合中转站（OpenAI 兼容）",
     baseUrl: "https://yunwu.ai/v1",
     defaultModel: "deepseek-v4-pro",
-    consoleUrl: "https://yunwu.ai/",
-    keyLabel: "API Key（yunwu.ai 中转站，点右侧眼睛可见；与生图 key 同账号可通用）",
+    keyLabel: "API Key（任意 OpenAI 兼容中转/网关均可）",
     modelHint:
-      "云雾是聚合中转站，一把 key 通 400+ 模型（DeepSeek / GPT / Claude / Gemini / Qwen / GLM / Grok…）。默认 deepseek-v4-pro；点「获取模型」拉当前可用列表再选。",
-    keyField: "yunwuApiKey",
-    modelField: "yunwuModel",
-    keyEnv: "YUNWU_API_KEY",
-    modelEnv: "YUNWU_MODEL",
-    // 云雾 /models 是全家桶（2026-07 实测 403 个），生图/音视频/向量全混在一起。
+      "默认示例接入 yunwu.ai（与本项目无任何利益关系），可替换为自建 OneAPI / New API、OpenRouter 或任何 OpenAI 兼容端点；点「获取模型」拉取当前端点的可用模型列表。",
+    keyField: "relayApiKey",
+    modelField: "relayModel",
+    keyEnv: "RELAY_API_KEY",
+    modelEnv: "RELAY_MODEL",
+    // 聚合中转的 /models 往往是全家桶（默认示例端点 2026-07 实测 403 个），生图/音视频/向量全混在一起。
     // 白名单主流文本对话系前缀 + 黑名单多模态/媒体关键词，双保险过滤。
     isChatModel: (id) =>
       /^(deepseek|gpt-|chatgpt|o[134](-|$)|claude|gemini|qwen|qwq|glm|grok|kimi|moonshot|llama|mistral|doubao|ernie|yi-|minimax|hunyuan|step)/i.test(

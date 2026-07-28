@@ -18,22 +18,27 @@ export interface ProviderState {
   model: string;
 }
 
-// 文案生成引擎：DeepSeek / 通义千问 / Kimi / 云雾 API 四选一。
+// 文案生成引擎：DeepSeek / 通义千问 / Kimi / 聚合中转站（OpenAI 兼容）四选一。
 // 一把 key 通常能调该家多个模型，所以模型不写死：点「获取模型」实时拉 /models 再下拉选，
 // 拉不动（限流/新模型未上架）也能切回手动输入，不至于被下拉框锁死。
+// 聚合中转引擎另有可配的 Base URL，可接任意 OpenAI 兼容端点（本项目与任何中转站无利益关系）。
 export function LlmEngineCard({
   enabled,
   source,
   provider: initialProvider,
   providers: initialProviders,
+  relayBaseUrl: initialRelayBaseUrl,
 }: {
   enabled: boolean;
   source: "db" | "env" | "none";
   provider: LlmProvider;
   providers: Record<LlmProvider, ProviderState>;
+  relayBaseUrl: string;
 }) {
   const [provider, setProvider] = useState<LlmProvider>(initialProvider);
   const [providers, setProviders] = useState(initialProviders);
+  // 聚合中转站 Base URL（空 = 用 env/默认示例）
+  const [relayBaseUrl, setRelayBaseUrl] = useState(initialRelayBaseUrl);
   const { saving, msg, save } = useSectionSave();
   const [testing, setTesting] = useState(false);
   const [testMsg, setTestMsg] = useState("");
@@ -61,7 +66,12 @@ export function LlmEngineCard({
       const res = await fetch("/api/config/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, apiKey: cur.apiKey || undefined }),
+        body: JSON.stringify({
+          provider,
+          apiKey: cur.apiKey || undefined,
+          // 聚合中转引擎把还没保存的 Base URL 一起传去，按「待保存值优先」拉当前端点的列表
+          baseUrl: provider === "relay" && relayBaseUrl.trim() ? relayBaseUrl.trim() : undefined,
+        }),
       });
       const data = await res.json();
       if (data.ok && Array.isArray(data.models) && data.models.length > 0) {
@@ -90,7 +100,12 @@ export function LlmEngineCard({
       const res = await fetch("/api/config/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "llm", provider, apiKey: cur.apiKey || undefined }),
+        body: JSON.stringify({
+          kind: "llm",
+          provider,
+          apiKey: cur.apiKey || undefined,
+          baseUrl: provider === "relay" && relayBaseUrl.trim() ? relayBaseUrl.trim() : undefined,
+        }),
       });
       const data = await res.json();
       setTestMsg(data.ok ? "连接成功 ✓" : `连接失败：${data.error || "未知错误"}`);
@@ -101,9 +116,10 @@ export function LlmEngineCard({
     }
   }
 
-  // 保存：提供方 + 三家各自的 key/model 一起提交（key 为空串跳过，避免误清已存的）
+  // 保存：提供方 + 各家的 key/model 一起提交（key 为空串跳过，避免误清已存的）；
+  // 中转站 Base URL 始终提交：空串即清除，回落 env/默认示例
   function onSave() {
-    const patch: Record<string, unknown> = { llmProvider: provider };
+    const patch: Record<string, unknown> = { llmProvider: provider, relayBaseUrl: relayBaseUrl.trim() };
     for (const id of LLM_PROVIDER_IDS) {
       const m = LLM_PROVIDERS[id];
       if (providers[id].apiKey) patch[m.keyField] = providers[id].apiKey;
@@ -148,6 +164,20 @@ export function LlmEngineCard({
           <label className="text-muted-foreground">{meta.keyLabel}</label>
           <KeyInput value={cur.apiKey} onChange={(v) => patchCur({ apiKey: v })} placeholder="sk-..." />
         </div>
+
+        {provider === "relay" && (
+          <div className="space-y-1">
+            <label className="text-muted-foreground">中转站 Base URL</label>
+            <Input
+              value={relayBaseUrl}
+              onChange={(e) => setRelayBaseUrl(e.target.value)}
+              placeholder="https://yunwu.ai/v1"
+            />
+            <p className="text-xs text-muted-foreground">
+              默认示例为 yunwu.ai，可换成自建 OneAPI / New API、OpenRouter 等任意 OpenAI 兼容端点；本项目与任何中转站无利益关系。
+            </p>
+          </div>
+        )}
 
         <div className="space-y-1">
           <div className="flex items-center justify-between gap-2">
@@ -204,14 +234,16 @@ export function LlmEngineCard({
             {testing ? "测试中…" : "测试连接"}
           </Button>
           {msg && <span className="text-muted-foreground">{msg}</span>}
-          <a
-            href={meta.consoleUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="ml-auto text-blue-500 hover:underline"
-          >
-            用量 / 充值 ↗
-          </a>
+          {meta.consoleUrl && (
+            <a
+              href={meta.consoleUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="ml-auto text-blue-500 hover:underline"
+            >
+              用量 / 充值 ↗
+            </a>
+          )}
         </div>
         {testMsg && (
           <p className={`text-xs break-all ${ok ? "text-green-600" : "text-red-500"}`}>{testMsg}</p>

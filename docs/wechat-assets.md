@@ -45,7 +45,7 @@ LLM 按编号段落挑 2-4 个插图点（`illustrate_system`）→ Pexels / Pix
 ## AI 封面图（2026-07-12 起「正文 + 封面」同步生成；2026-07-19 起默认「模板直生」）
 主流程：选题页生成 / 快速洗稿出公众号稿 → 服务端在 `meta.cover` 标记生成方式（模板直生只记 `{mode:"template", style, ratio}`；无模板时回落旧提示词链路、随稿写好绘图提示词）→ 前端自动调 `/api/cover/image {draftId}` 生图 → 图片 base64 落 `ms_sync_state.cover_image:<draftId>`（**不进 ms_drafts**）→ 前端裁剪后自动保存本地。
 
-- **模板直生（2026-07-19 起）**：不走文案引擎——把该风格的模板参考图（`prompts/system/cover/templates/<风格key>/`，最多 4 张，加图即丢文件重部署）连同固定指令（提示词中心 `cover_template_instruction`）+ **该风格的「风格定义」**直接发给 GPT Image 的 **`/images/edits`**（multipart，`image[]` 多文件，yunwu 中转已实测支持），标题作画面大字逐字渲染，画面由图像模型照模板自己构思；稿件页可填「补充要求」。硬约束：**底部 10% 干净留白带（无字、无图画，深浅不限）**。风格定义在这条链路上当「文字缰绳」，防模型顺着参考图的题材跑偏。模板可用性走 `/api/cover/templates`。
+- **模板直生（2026-07-19 起）**：不走文案引擎——把该风格的模板参考图（`prompts/system/cover/templates/<风格key>/`，最多 4 张，加图即丢文件重部署）连同固定指令（提示词中心 `cover_template_instruction`）+ **该风格的「风格定义」**直接发给 GPT Image 的 **`/images/edits`**（multipart，`image[]` 多文件，默认示例中转端点已实测支持），标题作画面大字逐字渲染，画面由图像模型照模板自己构思；稿件页可填「补充要求」。硬约束：**底部 10% 干净留白带（无字、无图画，深浅不限）**。风格定义在这条链路上当「文字缰绳」，防模型顺着参考图的题材跑偏。模板可用性走 `/api/cover/templates`。
 
 - **锚点直生（2026-07-21 起，无模板参考图时的默认链路，迁移自 izscc/cc2image）**：风格不靠参考图、靠文字立起来。两步——① 文案引擎按 `cover_spec_system` 把稿件拆成五个结构化字段（`headline` / `deck` / `tags` / `metaphor` / `elements`，`generateObject`）；② 字段填进通用版式骨架 `cover_anchor_layout`（无刊头、标题唯一且为主视觉、宽幅左右 45/55 分栏、底部 10% 干净留白带），再拼上该风格的风格定义 + 裁剪安全区 → `/images/generations`。比旧提示词链路稳的地方在于**版式由代码固定、模型只填字段**，出问题能分清是字段拆歪还是风格描述不对；拆出的字段随图回传并落 `meta.cover.spec`，稿件页会回显。
   **模板图从此是可选增强**：往 `templates/<key>/` 丢图，同一套风格自动从锚点直生升级成模板直生，风格定义不用动。

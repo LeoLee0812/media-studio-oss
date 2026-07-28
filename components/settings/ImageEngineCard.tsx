@@ -63,6 +63,9 @@ export function ImageEngineCard({
           <div className="space-y-1">
             <label className="text-muted-foreground">API Base</label>
             <Input value={imageApiBase} onChange={(e) => setImageApiBase(e.target.value)} placeholder="https://yunwu.ai/v1" />
+            <p className="text-xs text-muted-foreground">
+              默认示例为 yunwu.ai，可换任意 OpenAI 兼容端点；本项目与任何中转站无利益关系。
+            </p>
           </div>
           <div className="space-y-1">
             <label className="text-muted-foreground">模型</label>
@@ -103,7 +106,7 @@ export function ImageEngineCard({
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          仅公众号稿件页显示封面图生成；生图走此中转，与 DeepSeek 独立计费。
+          仅公众号稿件页显示封面图生成；生图走此端点，与文案引擎独立计费。
         </p>
       </CardContent>
     </Card>

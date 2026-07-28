@@ -58,6 +58,7 @@ export default async function SettingsPage() {
     llmProvider: llm.provider,
     llmSource: llm.source,
     llmProviders,
+    relayBaseUrl: stored.relayBaseUrl ?? "",
     imageEnabled: image.apiKey.length > 0,
     imageApiKey: image.apiKey,
     imageBase: image.base,

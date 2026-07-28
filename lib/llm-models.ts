@@ -1,7 +1,7 @@
 import { LLM_PROVIDERS, type LlmProvider } from "./llm-providers";
 
 // ===== 各家公开模型列表拉取 =====
-// 三家（DeepSeek / 百炼 DashScope / Moonshot）都实现了 OpenAI 兼容的 GET /models，
+// 各家（DeepSeek / 百炼 DashScope / Moonshot / 聚合中转站）都实现了 OpenAI 兼容的 GET /models，
 // 一把 key 通常能调多个模型，所以设置页提供「获取模型」按钮实时拉当前可用的模型再下拉选。
 // 同一个请求也是最轻的鉴权探测，因此「测试连接」复用它（见 app/api/config/test/route.ts）。
 
@@ -24,10 +24,16 @@ function extractIds(json: unknown): string[] {
     .filter((id): id is string => typeof id === "string" && id.length > 0);
 }
 
-export async function fetchProviderModels(provider: LlmProvider, apiKey: string): Promise<ModelsResult> {
+// baseUrl 可选：relay（聚合中转）引擎的生效端点由调用方经 resolveProviderConfig 解析后传入，
+// 不传则回落注册表默认地址（deepseek/qwen/kimi 三家固定官方地址，传不传都一样）。
+export async function fetchProviderModels(
+  provider: LlmProvider,
+  apiKey: string,
+  baseUrl?: string,
+): Promise<ModelsResult> {
   const meta = LLM_PROVIDERS[provider];
   try {
-    const res = await fetch(`${meta.baseUrl}/models`, {
+    const res = await fetch(`${(baseUrl || meta.baseUrl).replace(/\/+$/, "")}/models`, {
       headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
       cache: "no-store",
       signal: AbortSignal.timeout(TIMEOUT_MS),

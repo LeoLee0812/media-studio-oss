@@ -11,7 +11,7 @@ import { baseSizeForRatio } from "./cover";
 //    对比/承接/常见坑，而不是「均匀分布给视觉呼吸感」）
 // ② 每个锚点按所选风格套一段确定性模板（搬自 cc2image prompt_schema.py 的
 //    render_handdrawn_body / render_quirky_doodle_body，改写成中文），拼出最终绘图提示词
-// ③ 调同一套云雾中转 gpt-image-2（/images/generations，写法参考 lib/cover.ts 的
+// ③ 调同一套生图中转端点的 gpt-image-2（/images/generations，写法参考 lib/cover.ts 的
 //    generateCoverImage）逐张生图，返回 base64
 // 成本提醒：一张图真金白银，MAX_AI_ILLUSTRATIONS 是硬上限，且本链路只在用户手动点击
 // 「AI 生成配图」时触发，不接入任何自动/批量流程。
@@ -216,7 +216,7 @@ export async function buildAiIllustrationPrompt(params: {
   return buildHanddrawnBodyPrompt(args);
 }
 
-// ---- ③ 调云雾中转 gpt-image-2 生图（写法参考 lib/cover.ts 的 generateCoverImage）----
+// ---- ③ 调生图中转端点的 gpt-image-2 生图（写法参考 lib/cover.ts 的 generateCoverImage）----
 
 // 正文配图默认 16:9；4:3 适合方一点的图解，写法与封面共用 baseSizeForRatio
 export async function generateAiIllustrationImage(params: {

@@ -83,7 +83,7 @@ export async function illustrateArticle(params: {
     prompt,
     temperature: 0.5,
   });
-  // 顶层字段名容错：schema 要求 images，但经聚合中转（yunwu）的模型对 json_schema 的
+  // 顶层字段名容错：schema 要求 images，但经聚合中转站的模型对 json_schema 的
   // 字段名约束不严格，实测会自作主张返回 illustrations 之类的键。内容是好的，只是键名漂了，
   // 所以取不到 images 时退而找对象里第一个数组值，别让整轮配图白跑。
   const raw = object as Record<string, unknown>;

@@ -33,10 +33,12 @@ export interface AppConfig {
   // Kimi（Moonshot 开放平台）
   kimiApiKey?: string;
   kimiModel?: string;
-  // 云雾 API（yunwu.ai 中转站，一把 key 通多家模型）
-  yunwuApiKey?: string;
-  yunwuModel?: string;
-  // 生图中转（yunwu → gpt-image 系列）
+  // 聚合中转站（任意 OpenAI 兼容端点，一把 key 通多家模型；默认示例 yunwu.ai，与本项目无利益关系）
+  relayApiKey?: string;
+  relayModel?: string;
+  // 聚合中转站 Base URL（可指向自建 OneAPI / New API、OpenRouter 等任意 OpenAI 兼容端点；空 = 用默认示例）
+  relayBaseUrl?: string;
+  // 生图中转（任意 OpenAI 兼容端点 → gpt-image 系列）
   imageApiBase?: string;
   imageApiKey?: string;
   imageModel?: string;
@@ -87,25 +89,36 @@ export function resolveLlmProvider(c: AppConfig): LlmProvider {
   return "deepseek";
 }
 
-// 某一家引擎的生效 key/model/来源：DB > env > 注册表默认。与当前选中哪家无关，
-// 因此设置页可以一次性回显三家、测试连接也能测「正在编辑但还没启用」的那家。
+// 某一家引擎的生效接口根地址：deepseek/qwen/kimi 固定用注册表官方地址；
+// relay（聚合中转）可被 DB 配置或 env 覆盖成任意 OpenAI 兼容端点，未配置时回落默认示例。
+// 统一去掉结尾斜杠，调用方直接拼 /models、/chat/completions。
+export function resolveProviderBaseUrl(provider: LlmProvider, c: AppConfig): string {
+  const meta = LLM_PROVIDERS[provider];
+  const raw = provider === "relay" ? c.relayBaseUrl || process.env.RELAY_BASE_URL || meta.baseUrl : meta.baseUrl;
+  return raw.replace(/\/+$/, "");
+}
+
+// 某一家引擎的生效 key/model/baseUrl/来源：DB > env > 注册表默认。与当前选中哪家无关，
+// 因此设置页可以一次性回显各家、测试连接也能测「正在编辑但还没启用」的那家。
 export async function resolveProviderConfig(
   provider: LlmProvider,
   stored?: AppConfig,
-): Promise<{ apiKey: string; model: string; source: "db" | "env" | "none" }> {
+): Promise<{ apiKey: string; model: string; baseUrl: string; source: "db" | "env" | "none" }> {
   const c = stored ?? (await getStoredConfig());
   const meta = LLM_PROVIDERS[provider];
   const apiKey = c[meta.keyField] || process.env[meta.keyEnv] || "";
   const model = c[meta.modelField] || process.env[meta.modelEnv] || meta.defaultModel;
+  const baseUrl = resolveProviderBaseUrl(provider, c);
   const source = c[meta.keyField] ? "db" : process.env[meta.keyEnv] ? "env" : "none";
-  return { apiKey, model, source };
+  return { apiKey, model, baseUrl, source };
 }
 
-// 生效的文案引擎配置：provider 决定用哪一组 key/model
+// 生效的文案引擎配置：provider 决定用哪一组 key/model/baseUrl
 export async function resolveLlmConfig(): Promise<{
   provider: LlmProvider;
   apiKey: string;
   model: string;
+  baseUrl: string;
   source: "db" | "env" | "none";
 }> {
   const c = await getStoredConfig();
@@ -122,6 +135,7 @@ export async function resolveImageConfig(): Promise<{
   source: "db" | "env" | "none";
 }> {
   const c = await getStoredConfig();
+  // 生图端点可指向任意 OpenAI 兼容服务；默认示例 yunwu.ai 仅为占位，与本项目无利益关系
   const base = (c.imageApiBase || process.env.IMAGE_API_BASE || "https://yunwu.ai/v1").replace(/\/$/, "");
   const apiKey = c.imageApiKey || process.env.IMAGE_API_KEY || "";
   const model = c.imageModel || process.env.IMAGE_MODEL || "gpt-image-2";
@@ -148,37 +162,39 @@ export async function resolveImageSearchConfig(): Promise<{
   return { pexelsKey, pixabayKey, source };
 }
 
-// 生效的素材翻译配置：开关默认开，引擎默认云雾 deepseek-v4-flash（翻译量级下成本可忽略）。
+// 生效的素材翻译配置：开关默认开，引擎默认经聚合中转站调 deepseek-v4-flash（翻译量级下成本可忽略）。
 // key 不单独存：复用所选引擎在 llmProviders 里已存的 key，避免同一把 key 存两份。
 export async function resolveTranslateConfig(): Promise<{
   enabled: boolean;
   provider: LlmProvider;
   model: string;
   apiKey: string;
+  baseUrl: string;
   source: "db" | "env" | "none";
 }> {
   const c = await getStoredConfig();
   const enabled = c.translateEnabled !== false;
-  const provider = isLlmProvider(c.translateProvider) ? c.translateProvider : "yunwu";
+  const provider = isLlmProvider(c.translateProvider) ? c.translateProvider : "relay";
   const model = c.translateModel || "deepseek-v4-flash";
-  const { apiKey, source } = await resolveProviderConfig(provider, c);
-  return { enabled, provider, model, apiKey, source };
+  const { apiKey, baseUrl, source } = await resolveProviderConfig(provider, c);
+  return { enabled, provider, model, apiKey, baseUrl, source };
 }
 
-// 生效的轻量任务引擎配置：默认云雾 deepseek-v4-flash（延迟低、成本低）。
+// 生效的轻量任务引擎配置：默认经聚合中转站调 deepseek-v4-flash（延迟低、成本低）。
 // 历史注意：此前 getFlashModel 写死 DeepSeek 官方 flash，用户切引擎后标题重写/小红书高亮
 // 仍静默打 DeepSeek——2026-07-18 起改为独立可配置，与翻译引擎同款机制（key 复用所选引擎已存的）。
 export async function resolveFlashConfig(): Promise<{
   provider: LlmProvider;
   model: string;
   apiKey: string;
+  baseUrl: string;
   source: "db" | "env" | "none";
 }> {
   const c = await getStoredConfig();
-  const provider = isLlmProvider(c.flashProvider) ? c.flashProvider : "yunwu";
+  const provider = isLlmProvider(c.flashProvider) ? c.flashProvider : "relay";
   const model = c.flashModel || "deepseek-v4-flash";
-  const { apiKey, source } = await resolveProviderConfig(provider, c);
-  return { provider, model, apiKey, source };
+  const { apiKey, baseUrl, source } = await resolveProviderConfig(provider, c);
+  return { provider, model, apiKey, baseUrl, source };
 }
 
 // RSS 未处理素材保留天数：默认 7 天（RSS 多为深度长文源，节奏慢）。
