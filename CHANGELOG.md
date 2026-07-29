@@ -2,6 +2,21 @@
 
 维护规则：每次功能改动在本文件顶部追加条目——日期 + 改了什么 + 为什么 + 涉及文件。
 
+## 2026-07-29 新增「推特长篇」一键复制到 X Articles + 修中文加粗漏 `**`
+
+- **推特长篇**：稿件页排版预览区新增「推特长篇」按钮，把稿子转成 X 文章编辑器吃得下的
+  裸语义化 HTML 写进剪贴板；新增 `lib/twitter-article.ts` 与 `docs/twitter-copy.md`。
+  X 的文章编辑器是 Draft.js，公众号那份满是 `<section style>` 的 HTML 粘过去会被
+  压塌成一个大段落，所以必须单独渲染一套。实测规则见文档。
+- **中文加粗补丁**：新增 `lib/marked-cjk.ts`。CommonMark 的强调 flanking 规则只认
+  ASCII 标点，`一个叫**中缝核（Raphe Nuclei）**的地方` 这类紧邻中文/全角标点的加粗
+  两头都开合不了，`**` 会原样漏给读者。注册一个优先级更高的 inline extension，用
+  「只看空白、不看标点」的宽松规则接管 `***`/`**`/`~~`，产出标准 em/strong/del token，
+  下游排版、小红书「加粗→高亮」、推特长篇全部照常吃到。公众号 / 小红书 / 推特长篇
+  三条渲染链路都挂上了；抖音走纯文本正则，本来就没这个问题，不动。
+- **涉及文件**：`lib/twitter-article.ts`、`lib/marked-cjk.ts`、`docs/twitter-copy.md`（新增），
+  `components/WechatStudio.tsx`、`lib/xhs.ts`、`lib/wemark/renderer.ts`、`CLAUDE.md`。
+
 ## 2026-07-28 第四引擎中立化：「云雾 API」→「聚合中转站（OpenAI 兼容）」+ Base URL 可配
 
 开源项目不该内置像广告的第三方默认值——yunwu.ai 降级为「可替换的默认示例」，任何 OpenAI 兼容端点均可接入：

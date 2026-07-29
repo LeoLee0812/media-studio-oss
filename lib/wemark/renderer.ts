@@ -9,6 +9,7 @@
  * 只在浏览器端运行（依赖 DOMParser）。
  */
 import { marked } from 'marked'
+import { useCjkEmphasis } from '../marked-cjk'
 import { getTheme, type StyleMap, type ThemeVars } from './themes'
 import { getCodeTheme, highlightToInline } from './highlight'
 
@@ -31,6 +32,9 @@ export const DEFAULT_OPTIONS: RenderOptions = {
 }
 
 marked.use({ gfm: true, breaks: true })
+// 中文强调补丁：修「叫**中缝核（Raphe Nuclei）**的」这类紧邻中文的加粗配不上对、
+// `**` 漏成字面量的问题（详见 lib/marked-cjk.ts）
+useCjkEmphasis()
 
 /** 给元素追加内联样式（保留已有样式，已有样式优先级更高） */
 function addStyle(el: Element, css: string) {

@@ -14,10 +14,20 @@ import { renderMarkdown, DEFAULT_OPTIONS, type RenderOptions } from "@/lib/wemar
 import { THEMES, PRIMARY_COLORS } from "@/lib/wemark/themes";
 import { CODE_THEMES } from "@/lib/wemark/highlight";
 import { renderXhs, xhsContentHash, type ParaEmoji } from "@/lib/xhs";
+import { renderTwitterArticle } from "@/lib/twitter-article";
 import { waitForXhsReady } from "@/lib/draft-tasks";
 import { stripReferences, reflowProse } from "@/lib/format";
 import { DouyinExport } from "@/components/DouyinExport";
 import { Copy, Check, Loader2, Highlighter, Music2 } from "lucide-react";
+
+/** X（推特）logo：lucide 已经没有 Twitter 图标了，用官方 X 字形补一个 */
+function XLogo() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M18.9 2H22l-7.1 8.1L23.2 22h-6.5l-5.1-6.7L5.8 22H2.7l7.6-8.7L1.6 2h6.7l4.6 6.1L18.9 2Zm-1.1 18h1.7L7.3 3.8H5.5L17.8 20Z" />
+    </svg>
+  );
+}
 
 const LS_KEY = "ms:wemark-options";
 
@@ -48,6 +58,7 @@ export function WechatStudio({
   const [mounted, setMounted] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedXhs, setCopiedXhs] = useState(false);
+  const [copiedX, setCopiedX] = useState(false);
   // 小红书「醒目化」素材的内存缓存（按正文比对），与服务端中转缓存二级配合
   const xhsCache = useRef<{ content: string; data: XhsAssist } | null>(null);
   // 就绪状态跟着「缓存对应的正文」走：正文一改就自动回到未就绪
@@ -243,6 +254,40 @@ export function WechatStudio({
     }
   }, [mounted, draftId, content, xhsGenerating, showTip]);
 
+  /**
+   * 复制到推特长篇（X Articles）：写「裸语义化 HTML」到 text/html，又是独立的一套。
+   *
+   * X 的文章编辑器是 Draft.js，实测：h1/h2/p/blockquote/ul/ol/strong/em/del/a 全部保留，
+   * 内联样式一概被剥，**section/div 外壳会把整段结构压塌成一个大段落**——公众号那份 HTML
+   * 直接粘过去就是一坨，这是它必须单独渲染的根因。图片彻底粘不进（只留一个 📷 字符），
+   * 只能原位留提示行，让用户在 X 编辑器里手动上传。详见 lib/twitter-article.ts。
+   *
+   * 不需要 AI 预处理（不像小红书要挑高亮），纯确定性转换，点了即刻写剪贴板。
+   */
+  const copyToTwitter = useCallback(async () => {
+    if (!mounted) return;
+    try {
+      const r = renderTwitterArticle(content ?? "");
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([r.html], { type: "text/html" }),
+          "text/plain": new Blob([r.plain], { type: "text/plain" }),
+        }),
+      ]);
+      setCopiedX(true);
+      setTimeout(() => setCopiedX(false), 2000);
+      const bits = [
+        `已复制（${r.paraCount} 段 · ${r.headingCount} 个小标题）`,
+        "去 X「文章」里粘贴，标题另填",
+      ];
+      if (r.imageCount > 0) bits.push(`${r.imageCount} 张配图要在 X 里手动上传`);
+      showTip(`${bits.join("，")} 🎉`, 6000);
+    } catch (e) {
+      console.error("[wechat-studio] 复制到推特长篇失败", e);
+      showTip("复制失败，请允许剪贴板权限");
+    }
+  }, [mounted, content, showTip]);
+
   return (
     <Card>
       <CardHeader className="gap-3">
@@ -256,6 +301,10 @@ export function WechatStudio({
               onClick={() => setShowDouyin((v) => !v)}
             >
               <Music2 /> 抖音长文
+            </Button>
+            {/* 推特长篇：纯确定性转换，点即写剪贴板（不像小红书要先跑 AI 高亮） */}
+            <Button variant="outline" size="sm" onClick={copyToTwitter}>
+              {copiedX ? <Check /> : <XLogo />} 推特长篇
             </Button>
             {/* 三态按钮：未就绪（点了踢后台生成，不占剪贴板）→ 生成中 → 已就绪（点即秒贴） */}
             <Button variant="outline" size="sm" onClick={copyToXhs}>

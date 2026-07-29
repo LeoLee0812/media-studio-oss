@@ -22,8 +22,11 @@
  * 不响应粘贴——所以纯文本里塞 markdown 符号那条路是死的，必须走 text/html。
  */
 import { marked } from "marked";
+import { useCjkEmphasis } from "./marked-cjk";
 
 marked.use({ gfm: true, breaks: true });
+// 中文强调补丁：没有它，紧邻中文的 **加粗** 配不上对，「加粗 → 高亮」这条映射会整段失灵
+useCjkEmphasis();
 
 /** 单段高亮的字数上限：超过这个长度就不高亮了，否则满屏黄底反而不醒目 */
 const MAX_MARK_LEN = 40;
