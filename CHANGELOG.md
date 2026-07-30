@@ -9,13 +9,15 @@
   ② `/api/auth/*` 豁免（只读 + 有密码门是合法组合，拦了没人能登录，且它只写 cookie 不动业务数据）；
   ③ `/api/cron/daily` 是全站唯一用 GET 触发写库的入口，在路由内部判断只读并返回 `{skipped:true}`，
      用 200 而不是 403，免得 Vercel 定时任务天天记一次失败；
-  ④ 顶栏常驻一条琥珀色只读提示条（`SiteHeader readOnly`）；
-  ⑤ 设置页整页替换成说明卡片——那一屏能改文案/生图引擎的 Base URL，是现成的 SSRF 入口，
+  ④ 设置页整页替换成说明卡片——那一屏能改文案/生图引擎的 Base URL，是现成的 SSRF 入口，
      服务端已经拦死，UI 上再整个拿掉，免得访客对着填不进去的输入框瞎试。
+- **没有顶栏提示条**：一开始加了条常驻横幅写「新增/修改/删除都会被拒绝」，读着像在防贼，
+  访客第一眼看到的不该是这个。整条删掉；被拦时的 403 文案也收敛成中性的一句
+  「演示站为只读模式，暂不支持修改。」
 - **为什么**：演示站改成公开免登录之后，任何人都能改设置、删稿件、写脏数据。
   只读模式让它退化成一个纯展示站：内容固定、谁也改不了，想动手就自己部署。
 - **涉及文件**：`lib/read-only.ts`（新增）、`middleware.ts`、`app/api/cron/daily/route.ts`、
-  `app/layout.tsx`、`components/SiteHeader.tsx`、`app/settings/page.tsx`、
+  `app/settings/page.tsx`、
   `.env.example`、`docs/architecture.md`、`README.md`
 
 ## 2026-07-30 密码门禁改为可选：不配 ACCESS_PASSWORD 就是公开站

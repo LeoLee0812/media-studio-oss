@@ -42,25 +42,25 @@ export default async function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Eye className="size-4" /> 只读模式，设置页已关闭
+              <Eye className="size-4" /> 演示站为只读模式
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             <p>
-              这是公开演示站，开着只读模式：RSS 订阅源、文案引擎、生图引擎、API Key
-              这些都不能改，所有写请求都会被服务端拒绝。
+              这台演示站用来展示效果，设置项（RSS 订阅源、文案引擎、生图引擎、API Key）
+              都保持只读。
             </p>
             <p>
-              想完整体验（配自己的订阅源、填自己的 Key、生成稿件），
+              想配自己的订阅源、填自己的 Key、完整跑一遍生成流程，可以
               <a
                 href="https://github.com/LeoLee0812/media-studio-oss"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline underline-offset-2"
               >
-                自己部署一套
+                部署一套自己的
               </a>
-              ——README 里有一段现成的提示词，复制给 AI 编程助手就能从头装到能用。
+              ——README 里有一段现成的提示词，复制给 AI 编程助手就能装好。
             </p>
           </CardContent>
         </Card>
