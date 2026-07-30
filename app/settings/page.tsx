@@ -15,6 +15,9 @@ import { getSyncState } from "@/lib/queries";
 import { CLEANUP_SYNC_KEY } from "@/lib/cleanup";
 import { normalizeStyle } from "@/lib/styles";
 import { SettingsClient, type SettingsInit } from "@/components/SettingsClient";
+import { isReadOnly } from "@/lib/read-only";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Eye } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +32,42 @@ interface SyncInfo {
 }
 
 export default async function SettingsPage() {
+  // 只读演示站：设置页整页不渲染表单。这里是全站最危险的一屏——能改文案/生图引擎的
+  // Base URL 和 key，被人改成内网地址就是一个现成的 SSRF 入口。服务端已经 403 拦死写请求，
+  // 这里再从 UI 上整个拿掉，免得访客对着一堆填不进去的输入框瞎试。
+  if (isReadOnly()) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-4 px-4 py-6">
+        <h1 className="text-2xl font-bold">设置</h1>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Eye className="size-4" /> 只读模式，设置页已关闭
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            <p>
+              这是公开演示站，开着只读模式：RSS 订阅源、文案引擎、生图引擎、API Key
+              这些都不能改，所有写请求都会被服务端拒绝。
+            </p>
+            <p>
+              想完整体验（配自己的订阅源、填自己的 Key、生成稿件），
+              <a
+                href="https://github.com/LeoLee0812/media-studio-oss"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2"
+              >
+                自己部署一套
+              </a>
+              ——README 里有一段现成的提示词，复制给 AI 编程助手就能从头装到能用。
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const [llm, image, search, rssRetentionDays, resend, stored, rss, cleanup] =
     await Promise.all([
       resolveLlmConfig(),

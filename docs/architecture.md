@@ -77,9 +77,15 @@ serverless 下到 pooler 的连接会间歇挂死（新建连接约半数挂起�
   顶栏的「退出登录」按钮此时不渲染（`SiteHeader showLogout`）。
   安全代偿：`/api/config` 在公开模式下把所有密钥字段抹成空串（`maskSecret`），只回 `*Enabled` 布尔——
   设置页仍可写入新 key，但已存的 key 不回显，不会被访客读走。本仓库的在线演示站走的就是这个模式。
+- **只读模式**（`READ_ONLY=1`，见 `lib/read-only.ts`）：与门禁正交的第二道闸，公开演示站专用。
+  middleware 在门禁判断**之前**拒绝一切非 GET/HEAD/OPTIONS 请求（403），`/api/auth/*` 除外
+  （只读 + 有密码门是合法组合，拦了就没人能登录）；`/api/cron/daily` 是全站唯一用 GET 触发写库的入口，
+  它在路由内部自己判断只读并返回 `{skipped:true}`（返回 200 而非 403，免得 Vercel 定时任务天天记失败）；
+  前端 `app/layout.tsx` 把状态传给 `SiteHeader` 挂提示条，`app/settings/page.tsx` 整页替换成说明卡片
+  （那一屏能改引擎 Base URL，是现成的 SSRF 入口，UI 上直接拿掉）。
 
 ## 环境变量（见 `.env.example`）
-- 必需：`DATABASE_URL` · `AUTH_SECRET`（`ACCESS_PASSWORD` 留空 = 公开模式，填了才启用门禁） · `CRON_SECRET` · `DEEPSEEK_API_KEY` · `LLM_MODEL`
+- 必需：`DATABASE_URL` · `AUTH_SECRET`（`ACCESS_PASSWORD` 留空 = 公开模式，填了才启用门禁；`READ_ONLY=1` = 全站禁写） · `CRON_SECRET` · `DEEPSEEK_API_KEY` · `LLM_MODEL`
 - 可选引擎：`LLM_PROVIDER=qwen|kimi|relay` · `QWEN_API_KEY` · `QWEN_MODEL` · `KIMI_API_KEY` · `KIMI_MODEL` · `RELAY_API_KEY` · `RELAY_MODEL` · `RELAY_BASE_URL`（聚合中转端点，默认示例 https://yunwu.ai/v1，可换任意 OpenAI 兼容端点；key 平时走设置页存 DB，env 仅兜底）
 - 配图搜图：`PEXELS_API_KEY` / `PIXABAY_API_KEY`（与 ppt-master skill 同一套 key）
 - 封面生图：`IMAGE_API_BASE`（任意 OpenAI 兼容生图端点，默认示例 https://yunwu.ai/v1）· `IMAGE_API_KEY` · `IMAGE_MODEL`（默认 gpt-image-2）· `IMAGE_QUALITY`（默认 medium）

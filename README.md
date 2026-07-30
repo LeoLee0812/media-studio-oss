@@ -52,6 +52,8 @@ RSS 订阅源 ──┐
 
 > 公共演示环境：未配置文案引擎 Key，AI 生成类功能不可用（自部署后在设置页填自己的 Key 即可）；演示数据公共可写，请勿存放重要内容。
 >
+> 演示站开着**只读模式**（`READ_ONLY=1`）：随便逛，但新增/修改/删除都会被拒绝，省得演示数据被写乱。自部署不配这一项就是正常可写站。
+>
 > 自部署时**配上 `ACCESS_PASSWORD` 就会启用全站密码门禁**（未登录页面跳 `/login`、裸调 API 返 401）；留空即公开模式，像这个演示站一样免登录。公开模式下配置接口不回显已存的 API Key，避免密钥被访客读走。
 
 ## 功能
@@ -176,6 +178,7 @@ grant ms_app to postgres;
 | --- | --- |
 | `DATABASE_URL` | `postgresql://ms_app.<projectRef>:<密码>@aws-0-<区域>.pooler.supabase.com:6543/postgres` |
 | `ACCESS_PASSWORD` | 全站访问密码；**留空 = 公开站**，免登录直接用 |
+| `READ_ONLY` | 填 `1` 则全站禁写（公开演示站用）；留空 = 正常可写 |
 | `AUTH_SECRET` | `openssl rand -hex 32` |
 | `DEEPSEEK_API_KEY` 等 | 文案引擎任选一家，也可部署后在设置页填 |
 
@@ -197,7 +200,7 @@ grant ms_app to postgres;
 ## 技术要点
 
 - **Next.js 16 App Router 全栈**，无独立后端；前端不直连数据库，读写全走 server route
-- **安全模型**：4 张表 RLS 全开、仅 `ms_app` 角色有策略；服务端经 transaction pooler 直连；全站 HMAC 签名 cookie 门禁（可选，不配 `ACCESS_PASSWORD` 即公开模式，此时配置接口不回显密钥）；采集/生成侧 URL 均过 SSRF 校验
+- **安全模型**：4 张表 RLS 全开、仅 `ms_app` 角色有策略；服务端经 transaction pooler 直连；全站 HMAC 签名 cookie 门禁（可选，不配 `ACCESS_PASSWORD` 即公开模式，此时配置接口不回显密钥）；`READ_ONLY=1` 时 middleware 拒绝一切写请求；采集/生成侧 URL 均过 SSRF 校验
 - **serverless 连接自愈**：针对 pooler 挂死场景的三层防御（超时→重建连接池→重试），见 `lib/db.ts` / `lib/queries.ts`
 - **提示词单一事实源**：全部写作规则在 `prompts/` 目录 md 文件，运行时可被数据库覆盖值热替换
 - **结构化输出降级**：部分模型 `generateObject` 概率性退化（实测记录在 `docs/architecture.md`），注册表按模型自动降级并在 UI 明示

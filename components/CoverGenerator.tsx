@@ -36,6 +36,11 @@ interface CoverSpec {
 }
 
 interface CoverMeta {
+  // 外部封面图直链。正常生图链路不写这个字段（图片以 base64 存在 ms_sync_state 里），
+  // 它是给「封面图不由本站生成」的场景留的口子：比如公开演示站的封面是预先做好、
+  // 随部署走静态目录上线的，写个 url 进 meta.cover 就能直接显示，不必把
+  // 几百 KB 的 base64 塞进数据库。有 url 就优先用它，不再去拉 /api/cover/image。
+  url?: string;
   prompt?: string;
   style?: string;
   ratio?: string;
@@ -117,6 +122,13 @@ export function CoverGenerator({
         }
       })
       .catch(() => setTplAvail({}));
+    // 外部直链优先：有 meta.cover.url 就直接显示，不走 b64 那条链路
+    if (saved.url) {
+      setImgSrc(saved.url);
+      setMsg("已加载封面图。");
+      return;
+    }
+
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
     // 只有「有提示词或标了模板直生、且没生成记录」才值得等：纯老稿子不轮询

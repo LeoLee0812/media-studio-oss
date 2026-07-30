@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
+  Eye,
   LogOut,
   Radio,
   Home,
@@ -58,7 +59,13 @@ function isActive(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-export function SiteHeader({ showLogout = true }: { showLogout?: boolean }) {
+export function SiteHeader({
+  showLogout = true,
+  readOnly = false,
+}: {
+  showLogout?: boolean;
+  readOnly?: boolean;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   if (pathname === "/login") return null;
@@ -70,6 +77,22 @@ export function SiteHeader({ showLogout = true }: { showLogout?: boolean }) {
 
   return (
     <>
+      {/* 只读演示站：顶部常驻一条说明，省得访客点了按钮才发现写不进去 */}
+      {readOnly && (
+        <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-700 dark:text-amber-400">
+          <Eye className="mr-1 inline size-3.5 align-text-bottom" />
+          公开演示站 · <strong>只读模式</strong>：可以随便逛，但新增 / 修改 / 删除都会被拒绝。想动手改就
+          <a
+            href="https://github.com/LeoLee0812/media-studio-oss"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mx-1 underline underline-offset-2"
+          >
+            自己部署一套
+          </a>
+          （README 里有一键安装的提示词）。
+        </div>
+      )}
       <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-1 px-4">
           <Link href="/" className="mr-4 flex items-center gap-2 font-semibold">

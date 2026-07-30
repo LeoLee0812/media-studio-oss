@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { runDailyIngest, type DailyIngestResult } from "@/lib/ingest";
 import { sendEmail, escapeHtml } from "@/lib/notify";
+import { isReadOnly } from "@/lib/read-only";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,11 @@ function collectErrors(result: DailyIngestResult): string[] {
 const siteUrl = process.env.SITE_URL || "http://localhost:3000";
 
 export async function GET() {
+  // 只读演示站：采集会写库，直接跳过。返回 200 而不是 403，
+  // 否则 Vercel 的定时任务每天记一次失败，看着像故障。
+  if (isReadOnly()) {
+    return NextResponse.json({ ok: true, skipped: true, reason: "只读模式，已跳过每日采集" });
+  }
   try {
     const result = await runDailyIngest();
     const errors = collectErrors(result);

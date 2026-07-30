@@ -2,6 +2,22 @@
 
 维护规则：每次功能改动在本文件顶部追加条目——日期 + 改了什么 + 为什么 + 涉及文件。
 
+## 2026-07-30 新增只读模式：公开演示站全站禁写
+
+- **改了什么**：新增 `lib/read-only.ts` 的 `isReadOnly()`（开关是 env `READ_ONLY=1`）。开启后
+  ① middleware 拒绝一切非 GET/HEAD/OPTIONS 请求（403 + 统一文案），排在门禁判断之前——只读跟登不登录无关；
+  ② `/api/auth/*` 豁免（只读 + 有密码门是合法组合，拦了没人能登录，且它只写 cookie 不动业务数据）；
+  ③ `/api/cron/daily` 是全站唯一用 GET 触发写库的入口，在路由内部判断只读并返回 `{skipped:true}`，
+     用 200 而不是 403，免得 Vercel 定时任务天天记一次失败；
+  ④ 顶栏常驻一条琥珀色只读提示条（`SiteHeader readOnly`）；
+  ⑤ 设置页整页替换成说明卡片——那一屏能改文案/生图引擎的 Base URL，是现成的 SSRF 入口，
+     服务端已经拦死，UI 上再整个拿掉，免得访客对着填不进去的输入框瞎试。
+- **为什么**：演示站改成公开免登录之后，任何人都能改设置、删稿件、写脏数据。
+  只读模式让它退化成一个纯展示站：内容固定、谁也改不了，想动手就自己部署。
+- **涉及文件**：`lib/read-only.ts`（新增）、`middleware.ts`、`app/api/cron/daily/route.ts`、
+  `app/layout.tsx`、`components/SiteHeader.tsx`、`app/settings/page.tsx`、
+  `.env.example`、`docs/architecture.md`、`README.md`
+
 ## 2026-07-30 密码门禁改为可选：不配 ACCESS_PASSWORD 就是公开站
 
 - **改了什么**：`isGateEnabled()`（`lib/auth.ts`）判断有没有配 `ACCESS_PASSWORD`——没配就是「公开模式」，
