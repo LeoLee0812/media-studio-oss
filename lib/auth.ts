@@ -4,6 +4,15 @@
 
 export const AUTH_COOKIE = "ms_auth";
 
+/**
+ * 门禁是否启用：没配 ACCESS_PASSWORD 就是「公开模式」，全站免登录直接可用。
+ * 公开演示站（如本仓库的在线体验站）走这条路；自部署想加锁只要配上 ACCESS_PASSWORD。
+ * 公开模式下配置接口不会回传明文 API key（见 app/api/config/route.ts）。
+ */
+export function isGateEnabled(): boolean {
+  return (process.env.ACCESS_PASSWORD ?? "").length > 0;
+}
+
 function toHex(buf: ArrayBuffer): string {
   return Array.from(new Uint8Array(buf))
     .map((b) => b.toString(16).padStart(2, "0"))
@@ -50,4 +59,14 @@ export async function verifyToken(token: string | undefined): Promise<boolean> {
     diff |= token.charCodeAt(i) ^ expected.charCodeAt(i);
   }
   return diff === 0;
+}
+
+/**
+ * 当前访客有没有工作台权限：公开模式（没配 ACCESS_PASSWORD）人人都有，
+ * 否则看 cookie 令牌。页面/布局判断一律用它，别再直接调 verifyToken，
+ * 否则公开模式下会被判成「未登录」——导航栏消失、落地页顶掉仪表盘。
+ */
+export async function hasWorkspaceAccess(token: string | undefined): Promise<boolean> {
+  if (!isGateEnabled()) return true;
+  return verifyToken(token);
 }

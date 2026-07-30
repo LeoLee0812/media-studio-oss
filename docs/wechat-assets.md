@@ -75,6 +75,18 @@ LLM 按编号段落挑 2-4 个插图点（`illustrate_system`）→ Pexels / Pix
 - 生成物来自一次性转换脚本 `npm run convert:themes`（`scripts/convert-wenyan-themes.ts`）。**日后加主题优先改脚本配置重跑，不要直接手改生成文件**；出处与 Apache-2.0 声明在生成文件头注释
 - 设计前提不变：公众号只认内联 style，所有主题必须全内联；伪元素 / nth-child 效果转换时必然丢，别试图用 `<style>` 标签救
 
+## 可写模式（2026-07-30 起，右侧预览也能改稿）
+右上角「可写模式」按钮把公众号排版预览切成可编辑视图（`components/WechatWriteView.tsx`，开关记在 `localStorage: ms:wemark-write`）：
+
+- **块级映射**：`renderMarkdownBlocks()`（`lib/wemark/renderer.ts`）用 `marked.lexer` 把正文切成顶层 token，每个 token 单独 `marked.parser` 一次，套 `<div data-md-block="i">` 外壳后走**同一条 transform 流水线**（样式与 `renderMarkdown` 逐字一致），最后按外壳拆回数组。实测所有 token 的 `raw` 拼起来等于原文，所以「渲染块 ↔ Markdown 源」严格一一对应
+- **定位**：块源码在整篇 `content` 里用顺序 `indexOf` 定位出字符区间（`stripReferences` 只删整行、折空行、trim，不改行内文字，所以必然命中）。万一没命中，该块降级为**只读**——绝不写到错的位置
+- **写回**：点一块 → 原位展开只装这一块源码的编辑框 → 400ms 防抖写回整篇 `content`（`DraftEditor` 那份 state），左侧编辑区/脏标记/保存/AI 链路全部沿用原逻辑。草稿区间由自己维护（写回后 `start + md.length`），**不跟着重新分块的结果走**：用户在块里敲空行把它拆成两块时，跟着 ranges 会把整段草稿塞进前半块 → 正文重复
+- **块工具条**：悬停出上移 / 下移 / 下方插入 / 删除，直接按字符区间改字符串
+- **内嵌图片**：AI 生成配图是 data URI，编辑时折成 `«内嵌图片N»` 占位，写回前还原（删掉占位符 = 删掉那张图）
+- **不做 reflow**：可写模式按正文原始段落渲染。`reflowProse` 是按文本哈希随机拆句的，改一个字整段边界就跳动，编辑时晃眼。想让「所见」= 「复制所得」，点头部「固化重排」把重排写进正文
+- **外部改稿保护**：`content` 被左侧编辑区 / AI 修改 / 撤销改掉时（自写标记不匹配）立刻关闭编辑态，避免旧区间串位
+- 复制到公众号/小红书/推特仍走 `renderMarkdown` 的整段输出，剪贴板里没有块外壳 div
+
 ## 编辑预览滚动同步
 `hooks/use-scroll-sync.ts` 双向比例同步：公众号稿的编辑 Textarea（70vh）↔ WechatStudio 预览容器；程序性滚动打 suppress 标记防回环。
 

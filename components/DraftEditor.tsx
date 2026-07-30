@@ -692,7 +692,16 @@ export function DraftEditor({ draft: initial, topic }: { draft: Draft; topic: To
 
         {/* 预览区：公众号用 WeMark 排版预览（富文本复制），其余平台用纯文本预览 */}
         {initial.platform === "wechat" ? (
-          <WechatStudio draftId={initial.id} title={title} content={content} sync={scrollSync.right} />
+          // onContentChange/onTitleChange 打开右侧「可写模式」：预览里改的内容回到同一份
+          // title/content 状态，左侧编辑区、脏标记、保存、AI 链路全都自动跟上
+          <WechatStudio
+            draftId={initial.id}
+            title={title}
+            content={content}
+            sync={scrollSync.right}
+            onContentChange={setContent}
+            onTitleChange={setTitle}
+          />
         ) : (
           <Card>
             <CardHeader className="flex-row items-center justify-between">

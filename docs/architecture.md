@@ -72,9 +72,14 @@ serverless 下到 pooler 的连接会间歇挂死（新建连接约半数挂起�
 - `middleware.ts` 全站门禁：cookie `ms_auth` = HMAC-SHA256(ACCESS_PASSWORD, key=AUTH_SECRET)，httpOnly
 - 未登录页面 → 重定向 `/login`；裸调 API → 401
 - 采集接口额外允许 `Authorization: Bearer CRON_SECRET`
+- **公开模式**：没配 `ACCESS_PASSWORD` 时 `isGateEnabled()` 为假，middleware 全部放行、`/login` 跳回落地页。
+  页面侧统一用 `hasWorkspaceAccess()`（公开模式恒真）判断，否则导航栏会消失、`/` 会被落地页顶掉；
+  顶栏的「退出登录」按钮此时不渲染（`SiteHeader showLogout`）。
+  安全代偿：`/api/config` 在公开模式下把所有密钥字段抹成空串（`maskSecret`），只回 `*Enabled` 布尔——
+  设置页仍可写入新 key，但已存的 key 不回显，不会被访客读走。本仓库的在线演示站走的就是这个模式。
 
 ## 环境变量（见 `.env.example`）
-- 必需：`DATABASE_URL` · `ACCESS_PASSWORD` · `AUTH_SECRET` · `CRON_SECRET` · `DEEPSEEK_API_KEY` · `LLM_MODEL`
+- 必需：`DATABASE_URL` · `AUTH_SECRET`（`ACCESS_PASSWORD` 留空 = 公开模式，填了才启用门禁） · `CRON_SECRET` · `DEEPSEEK_API_KEY` · `LLM_MODEL`
 - 可选引擎：`LLM_PROVIDER=qwen|kimi|relay` · `QWEN_API_KEY` · `QWEN_MODEL` · `KIMI_API_KEY` · `KIMI_MODEL` · `RELAY_API_KEY` · `RELAY_MODEL` · `RELAY_BASE_URL`（聚合中转端点，默认示例 https://yunwu.ai/v1，可换任意 OpenAI 兼容端点；key 平时走设置页存 DB，env 仅兜底）
 - 配图搜图：`PEXELS_API_KEY` / `PIXABAY_API_KEY`（与 ppt-master skill 同一套 key）
 - 封面生图：`IMAGE_API_BASE`（任意 OpenAI 兼容生图端点，默认示例 https://yunwu.ai/v1）· `IMAGE_API_KEY` · `IMAGE_MODEL`（默认 gpt-image-2）· `IMAGE_QUALITY`（默认 medium）

@@ -114,6 +114,20 @@ export const COVER_STYLES: CoverStyle[] = [
     ],
     origin: "cc2image",
   },
+  {
+    key: "icon_pedestal",
+    label: "图标展台风",
+    hint: "浅灰摄影棚 + 3D 图标展台 + 单一强调色粗体大字，产品发布会海报感",
+    styleId: "cover_style_def_icon_pedestal",
+    defaultRatio: "4:3",
+    bestFor: ["公司动态", "融资并购", "商业大事件", "财报数据", "行业对垒"],
+    keywords: [
+      "亿", "万亿", "融资", "并购", "收购", "买下", "赚", "亏", "季度", "财报",
+      "股价", "市值", "官司", "起诉", "被告", "赢了", "输了", "发布会", "CEO",
+      "创始人", "上市", "IPO", "营收", "利润", "赛道",
+    ],
+    origin: "studio",
+  },
 ];
 
 export const COVER_RATIOS = ["2.35:1", "16:9", "4:3", "3:4", "1:1"] as const;

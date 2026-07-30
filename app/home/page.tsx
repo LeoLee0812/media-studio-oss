@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { AUTH_COOKIE, verifyToken } from "@/lib/auth";
+import { AUTH_COOKIE, hasWorkspaceAccess } from "@/lib/auth";
 import { Landing } from "@/components/Landing";
 
 export const metadata: Metadata = {
@@ -12,6 +12,6 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const authed = await verifyToken((await cookies()).get(AUTH_COOKIE)?.value);
+  const authed = await hasWorkspaceAccess((await cookies()).get(AUTH_COOKIE)?.value);
   return <Landing authed={authed} />;
 }

@@ -58,7 +58,7 @@ function isActive(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-export function SiteHeader() {
+export function SiteHeader({ showLogout = true }: { showLogout?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   if (pathname === "/login") return null;
@@ -107,13 +107,16 @@ export function SiteHeader() {
             <GithubMark className="size-4" />
           </a>
           <ThemeSwitcher />
-          <button
-            onClick={logout}
-            className="rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-accent"
-            aria-label="退出登录"
-          >
-            <LogOut className="size-4" />
-          </button>
+          {/* 公开模式（没配访问密码）没有登录态，也就没有「退出」可言 */}
+          {showLogout && (
+            <button
+              onClick={logout}
+              className="rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-accent"
+              aria-label="退出登录"
+            >
+              <LogOut className="size-4" />
+            </button>
+          )}
         </div>
       </header>
 

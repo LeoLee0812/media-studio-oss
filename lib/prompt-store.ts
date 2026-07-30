@@ -149,6 +149,15 @@ export const PROMPT_DEFS: PromptDef[] = [
     kind: "file",
     file: "system/cover/styles/timeline-mini.md",
   },
+  {
+    id: "cover_style_def_icon_pedestal",
+    label: "风格定义 · 图标展台风",
+    group: "AI 封面图",
+    description:
+      "浅灰摄影棚背景 + 若干 3D 陶瓷质感图标/物件摆在高低错落的展示台上 + 单一强调色 + 极粗黑体大字。适合公司动态、融资并购、商业大事件类选题，不含真实人物头像。",
+    kind: "file",
+    file: "system/cover/styles/icon-pedestal.md",
+  },
   // ——AI 封面图·旧提示词链路的系统指令（只剩两套原生风格保留）——
   {
     id: "cover_prompt_system",

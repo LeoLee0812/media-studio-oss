@@ -296,6 +296,74 @@ export function renderMarkdown(md: string, opts: RenderOptions): string {
   return section.outerHTML
 }
 
+// ── 可写模式：逐块渲染（media-studio 侧新增，WeMark 那边没有这一段）────────────
+// 预览要「点哪块改哪块」，就得知道每个渲染块对应哪段 Markdown 源。
+// 做法：先用 marked.lexer 把正文切成顶层 token（heading/paragraph/list/code/table…），
+// 每个 token 单独 parser 一次拿到它自己的 HTML 片段（实测与整体 parse 结果逐字一致，
+// 且所有 token 的 raw 拼起来正好等于原文，所以块与源码是严格一一对应的），
+// 再套一层 <div data-md-block="i"> 外壳一起走同一条 transform 流水线（样式与
+// renderMarkdown 完全一致），最后按外壳把 HTML 拆回数组。
+//
+// 外壳只服务预览 DOM：复制到公众号/小红书/推特仍走 renderMarkdown 的整段输出，
+// 剪贴板里不会多出这层 div。
+
+/** 单个可编辑块：Markdown 源 + 它渲染出的 HTML */
+export interface BlockRender {
+  raw: string
+  html: string
+}
+
+export interface BlocksRender {
+  /** 外层容器的内联样式（字体/字号/行高，与 renderMarkdown 的 section 同一份） */
+  containerStyle: string
+  blocks: BlockRender[]
+  /** 尾部附加内容（「参考链接」脚注区），不属于任何块，只读 */
+  tailHtml: string
+}
+
+export function renderMarkdownBlocks(md: string, opts: RenderOptions): BlocksRender {
+  const theme = getTheme(opts.themeId)
+  const styles = theme.styles({ primary: opts.primary, fontSize: opts.fontSize })
+
+  const raws: string[] = []
+  let wrapped = ''
+  for (const token of marked.lexer(md)) {
+    // space token 只是块之间的空行，没有可编辑内容
+    if (token.type === 'space') continue
+    const raw = (token.raw ?? '').replace(/\s+$/, '')
+    if (!raw.trim()) continue
+    // 缩进代码块（4 空格起，非 ``` 围栏）在中文稿里几乎都是正文误缩进：
+    // 复制链路的 reflowProse 会把缩进吃掉当正文渲染，这里跟着当正文，
+    // 否则可写模式会凭空多出一块「代码」，与只读预览和复制结果都不一致。
+    // 只影响渲染，块的 raw 仍是原文（含缩进），编辑写回照旧对得上位置。
+    const indentedProse = token.type === 'code' && !/^\s{0,3}(```|~~~)/.test(raw)
+    const frag = indentedProse
+      ? (marked.parse(raw.replace(/^[ \t]+/gm, ''), { async: false }) as string)
+      : (marked.parser([token], { async: false }) as string)
+    wrapped += `<div data-md-block="${raws.length}">${frag}</div>`
+    raws.push(raw)
+  }
+
+  const doc = new DOMParser().parseFromString(wrapped, 'text/html')
+
+  transformCodeBlocks(doc, opts)
+  transformImages(doc, styles)
+  transformTaskLists(doc)
+  transformLinks(doc, styles, opts)
+  applyThemeStyles(doc, styles)
+
+  const blocks: BlockRender[] = raws.map((raw) => ({ raw, html: '' }))
+  let tailHtml = ''
+  for (const el of Array.from(doc.body.children)) {
+    const idx = el.getAttribute('data-md-block')
+    const block = idx === null ? undefined : blocks[Number(idx)]
+    if (block) block.html = el.innerHTML
+    else tailHtml += el.outerHTML // 脚注区等
+  }
+
+  return { containerStyle: styles.container, blocks, tailHtml }
+}
+
 /** 字数统计（中文按字、英文按词） */
 export function countWords(md: string): number {
   const cjk = (md.match(/[一-鿿㐀-䶿]/g) ?? []).length

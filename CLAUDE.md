@@ -12,6 +12,7 @@ Next.js 16 + React 19 + Tailwind v4，Supabase 4 张 `ms_` 前缀表，多家 LL
 | [docs/wechat-assets.md](docs/wechat-assets.md) | 配图、封面生图、排版主题、滚动同步、AI 标题 |
 | [docs/xiaohongshu-copy.md](docs/xiaohongshu-copy.md) | 一键复制到小红书长文：schema 白名单、AI 高亮、图片为什么带不过去 |
 | [docs/douyin-copy.md](docs/douyin-copy.md) | 一键复制到抖音长文：三段式导出、正文纯文本转换、AI 生成 30 字摘要 |
+| [docs/zhihu-copy.md](docs/zhihu-copy.md) | 一键复制到知乎专栏：裸语义化 HTML、与推特那份的差异（图片保留、代码块保留） |
 | [docs/twitter-copy.md](docs/twitter-copy.md) | 一键复制到推特长篇 X Articles：Draft.js 实测 schema、section 外壳为什么会把结构压塌、图片带不过去 |
 | [docs/ingestion.md](docs/ingestion.md) | RSS 采集、每日 cron |
 | [docs/roadmap.md](docs/roadmap.md) | 待办与已砍项（别重提被砍的想法） |

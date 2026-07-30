@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AUTH_COOKIE, verifyToken } from "@/lib/auth";
+import { AUTH_COOKIE, isGateEnabled, verifyToken } from "@/lib/auth";
 
 // 全站门禁：未登录访问页面 → 重定向 /login；未授权裸调 API → 401。
+// 没配 ACCESS_PASSWORD 时整站是「公开模式」——不拦任何请求，/login 也直接跳回落地页。
 // 例外：落地页 "/" 与 "/home"（纯静态介绍页，不碰数据库）、/login 页、/api/auth/login。
 // 定时/采集接口（/api/cron/* 与 /api/ingest/*）额外允许 Bearer CRON_SECRET。
 
@@ -9,6 +10,17 @@ const PUBLIC_PATHS = ["/", "/home", "/login", "/api/auth/login"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  // 公开模式：没设访问密码就不设门，登录页也没有意义，回落地页
+  if (!isGateEnabled()) {
+    if (pathname === "/login") {
+      const url = req.nextUrl.clone();
+      url.pathname = "/";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next();
+  }
 
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
     return NextResponse.next();

@@ -13,6 +13,7 @@ import {
   type RssFeedConfig,
 } from "@/lib/config";
 import { LLM_PROVIDERS, LLM_PROVIDER_IDS, isLlmProvider } from "@/lib/llm-providers";
+import { isGateEnabled } from "@/lib/auth";
 import { getSyncState } from "@/lib/queries";
 import { isWritingStyle, normalizeStyle } from "@/lib/styles";
 
@@ -33,12 +34,23 @@ export async function GET() {
     ]);
   // 私有单人工作台（全站门禁之后）：API key 明文回传给设置页做「点击可见」展示。
   // 三家各自的 key/model 一次性给全，切换引擎时前端直接回显、不用再请求。
+  //
+  // ⚠️ 公开模式（没配 ACCESS_PASSWORD，任何人都能访问）下这条不成立：明文回传等于把 key
+  // 送给所有访客。所以下面 maskSecret() 会把所有密钥字段抹成空串，只留 *Enabled 布尔与
+  // 非密字段——设置页照样能填新 key（写入不受影响），只是不再回显已存的值。
+  const openMode = !isGateEnabled();
+  const maskSecret = (v: string) => (openMode ? "" : v);
   const llmProviders = Object.fromEntries(
     await Promise.all(
-      LLM_PROVIDER_IDS.map(async (id) => [id, await resolveProviderConfig(id, stored)] as const),
+      LLM_PROVIDER_IDS.map(async (id) => {
+        const cfg = await resolveProviderConfig(id, stored);
+        return [id, { ...cfg, apiKey: maskSecret(cfg.apiKey) }] as const;
+      }),
     ),
   );
   return NextResponse.json({
+    // 公开模式（无访问密码）：密钥字段一律不回显
+    openMode,
     // 默认写作风格（选题页/洗稿页的初始选中项）
     writingStyle: normalizeStyle(stored.writingStyle),
     llmEnabled: llm.apiKey.length > 0,
@@ -50,7 +62,7 @@ export async function GET() {
     // 聚合中转站 Base URL（DB 存的原始值；空 = 用 env/默认示例）
     relayBaseUrl: stored.relayBaseUrl ?? "",
     imageEnabled: image.apiKey.length > 0,
-    imageApiKey: image.apiKey,
+    imageApiKey: maskSecret(image.apiKey),
     imageBase: image.base,
     imageModel: image.model,
     imageQuality: image.quality,
@@ -58,8 +70,8 @@ export async function GET() {
     // 文章配图搜图（Pexels / Pixabay）
     searchEnabled: search.pexelsKey.length > 0 || search.pixabayKey.length > 0,
     searchSource: search.source,
-    pexelsApiKey: search.pexelsKey,
-    pixabayApiKey: search.pixabayKey,
+    pexelsApiKey: maskSecret(search.pexelsKey),
+    pixabayApiKey: maskSecret(search.pixabayKey),
     rssRetentionDays,
     // 邮件通知（key 只报是否配置）
     resendEnabled: resend.apiKey.length > 0,

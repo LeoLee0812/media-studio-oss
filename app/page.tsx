@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { AUTH_COOKIE, verifyToken } from "@/lib/auth";
+import { AUTH_COOKIE, hasWorkspaceAccess } from "@/lib/auth";
 import { Landing } from "@/components/Landing";
 import {
   dashboardCounts,
@@ -47,7 +47,7 @@ function isSyncStale(lastSuccessAt?: string): boolean {
 
 export default async function DashboardPage() {
   // "/" 是门禁开放的：未登录看落地页，登录了才查数据、渲染仪表盘
-  const authed = await verifyToken((await cookies()).get(AUTH_COOKIE)?.value);
+  const authed = await hasWorkspaceAccess((await cookies()).get(AUTH_COOKIE)?.value);
   if (!authed) return <Landing />;
 
   const [counts, drafting, pendingDrafts, topDrafts, syncRaw] = await Promise.all([
