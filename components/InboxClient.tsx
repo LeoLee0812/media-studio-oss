@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { BulkImportPanel } from "@/components/BulkImportPanel";
 import {
   SOURCE_LABELS,
   MATERIAL_STATUS_LABELS,
@@ -512,6 +513,15 @@ export function InboxClient({ materials, topics, llmEnabled }: Props) {
             setAdding(false);
             showToast("素材已添加");
           }}
+          onBulkCreated={(list) => {
+            // 批量导入：每批回来就插到顶部（弹窗不关，可继续导），按 id 去重防重复插入
+            setList((prev) => {
+              const known = new Set(prev.map((x) => x.id));
+              const fresh = list.filter((m) => !known.has(m.id));
+              return fresh.length > 0 ? [...fresh, ...prev] : prev;
+            });
+            showToast(`已导入 ${list.length} 条素材`);
+          }}
         />
       )}
 
@@ -805,17 +815,23 @@ function DetailDialog({
   );
 }
 
-// 手动添加素材弹窗：标题必填，url 服务端按链接去重（重复报 409）
+// 添加素材弹窗：两个标签页——
+//   手动录入：标题必填，url 服务端按链接去重（重复报 409）
+//   批量导入：选/拖一个本地文件夹（Obsidian vault 等），浏览器本地解析后分批入库
 function AddMaterialDialog({
   pillarOptions,
   onClose,
   onCreated,
+  onBulkCreated,
 }: {
   /** 板块联想候选（当前列表里已有的分类名去重） */
   pillarOptions: string[];
   onClose: () => void;
   onCreated: (m: MaterialCard) => void;
+  /** 批量导入每批成功后回调（弹窗保持打开，可以继续导下一个文件夹） */
+  onBulkCreated: (list: MaterialCard[]) => void;
 }) {
+  const [tab, setTab] = useState<"manual" | "bulk">("manual");
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
   const [summary, setSummary] = useState("");
@@ -853,8 +869,32 @@ function AddMaterialDialog({
   }
 
   return (
-    <Dialog open onClose={onClose} className="max-h-[85vh] overflow-y-auto">
-      <h2 className="mb-4 text-lg font-semibold">添加素材</h2>
+    <Dialog
+      open
+      onClose={onClose}
+      className={`max-h-[85vh] overflow-y-auto ${tab === "bulk" ? "max-w-2xl" : ""}`}
+    >
+      <h2 className="mb-3 text-lg font-semibold">添加素材</h2>
+      <div className="mb-4 flex gap-1 rounded-lg bg-muted p-1 text-sm">
+        {([
+          ["manual", "手动录入"],
+          ["bulk", "批量导入"],
+        ] as const).map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setTab(k)}
+            className={`flex-1 rounded-md px-3 py-1.5 transition-colors ${
+              tab === k ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "bulk" ? (
+        <BulkImportPanel pillarOptions={pillarOptions} onImported={onBulkCreated} onClose={onClose} />
+      ) : (
       <div className="space-y-3">
         <div>
           <label className="mb-1 block text-sm font-medium">标题 *</label>
@@ -906,6 +946,7 @@ function AddMaterialDialog({
           </Button>
         </div>
       </div>
+      )}
     </Dialog>
   );
 }

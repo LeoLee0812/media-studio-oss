@@ -15,6 +15,7 @@ Next.js 16 + React 19 + Tailwind v4，Supabase 4 张 `ms_` 前缀表，多家 LL
 | [docs/zhihu-copy.md](docs/zhihu-copy.md) | 一键复制到知乎专栏：裸语义化 HTML、与推特那份的差异（图片保留、代码块保留） |
 | [docs/twitter-copy.md](docs/twitter-copy.md) | 一键复制到推特长篇 X Articles：Draft.js 实测 schema、section 外壳为什么会把结构压塌、图片带不过去 |
 | [docs/ingestion.md](docs/ingestion.md) | RSS 采集、每日 cron |
+| [docs/local-import.md](docs/local-import.md) | 本地文件夹批量导入：Obsidian vault 拖进来、frontmatter 解析、按路径去重 |
 | [docs/roadmap.md](docs/roadmap.md) | 待办与已砍项（别重提被砍的想法） |
 | `CHANGELOG.md` | 逐次改动的历史 |
 

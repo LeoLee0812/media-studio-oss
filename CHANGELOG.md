@@ -2,6 +2,26 @@
 
 维护规则：每次功能改动在本文件顶部追加条目——日期 + 改了什么 + 为什么 + 涉及文件。
 
+## 2026-07-31 素材流支持本地文件夹批量导入（Obsidian vault）
+
+- **改了什么**：「添加素材」弹窗拆成「手动录入 / 批量导入」两个标签页。批量导入支持三种投喂：
+  拖拽文件夹（`webkitGetAsEntry()` 递归展开子目录）、`<input webkitdirectory>` 选文件夹、多选文件。
+  文件在浏览器里读取解析成素材条目（frontmatter 的 title/tags/date、正文一级标题、行内 `#tag`、
+  首层目录名当板块），预览列表可逐条剔除，再分批（每批 50 条）POST 到新接口 `/api/materials/bulk`。
+- **去重**：`dedupe_key = local:<vault 名>/<库内相对路径>`，同一份 vault 重复导入自动跳过、不覆盖已有素材
+  （素材的板块/状态可能已被手工改过）。结果按「新增/跳过/失败」汇总。
+- **只收文本笔记**：`.md/.markdown/.mdx/.txt`，跳过 `.obsidian`、`.git`、`node_modules` 等目录与隐藏文件；
+  单次 ≤2000 个文件，单篇正文超 20000 字截断。跳过数量在界面上明示，免得以为漏导了。
+- **为什么**：RSS 给的是行业动态，个人知识库才是内容辨识度的来源。原先只能一条条手动录，
+  或者让 Agent 写一次性脚本灌库——对着几十上百篇 Obsidian 笔记不现实。
+- **隐私边界**：文件只在浏览器本地解析，只发往自己那份部署；公开演示站 `READ_ONLY=1`，
+  写接口一律 403，导不进去（要用就自部署）。
+- **顺带**：`lib/db.ts` 连本机 Postgres（localhost/127.0.0.1）时自动关掉 `ssl:require`——
+  本机库默认不开 TLS，否则本地开发根本连不上；远端连接一律仍走 require。
+- **涉及文件**：`lib/vault-import.ts`（新增）、`components/BulkImportPanel.tsx`（新增）、
+  `app/api/materials/bulk/route.ts`（新增）、`docs/local-import.md`（新增）、
+  `components/InboxClient.tsx`、`lib/types.ts`、`lib/db.ts`、`components/Landing.tsx`、`README.md`
+
 ## 2026-07-30 新增只读模式：公开演示站全站禁写
 
 - **改了什么**：新增 `lib/read-only.ts` 的 `isReadOnly()`（开关是 env `READ_ONLY=1`）。开启后

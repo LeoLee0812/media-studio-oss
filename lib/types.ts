@@ -3,7 +3,8 @@
 // 板块 = 用户自由命名的素材分类（如「AI 资讯」「科学认知」），不再是固定枚举；
 // 空值（null）表示未分类。数据库里是裸 text 列，天然兼容任意字符串。
 export type Pillar = string;
-export type MaterialSource = "rss" | "manual";
+// local = 从本地文件夹（Obsidian vault 等）批量导入的笔记，见 lib/vault-import.ts
+export type MaterialSource = "rss" | "manual" | "local";
 // 超保留期的未处理时效性素材由定时清理直接物理删除，没有「已过期」中转态（2026-07-18 起）
 export type MaterialStatus = "new" | "shortlisted" | "used" | "ignored";
 export type TopicStatus = "idea" | "selected" | "drafting" | "done" | "dropped";
@@ -93,6 +94,7 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
 export const SOURCE_LABELS: Record<MaterialSource, string> = {
   rss: "RSS 订阅",
   manual: "手动录入",
+  local: "本地导入",
 };
 
 export const TOPIC_STATUS_LABELS: Record<TopicStatus, string> = {

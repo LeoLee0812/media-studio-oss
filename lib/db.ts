@@ -7,12 +7,23 @@ const globalForDb = globalThis as unknown as {
   _msSql?: ReturnType<typeof postgres>;
 };
 
+// 本机 Postgres（localhost/127.0.0.1）默认不开 TLS，强行 ssl:require 会连不上；
+// 自部署/本地开发用本机库时自动关掉，远端一律仍走 require。
+function needsSsl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return !(host === "localhost" || host === "127.0.0.1" || host === "::1");
+  } catch {
+    return true;
+  }
+}
+
 function create() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("缺少 DATABASE_URL 环境变量");
   return postgres(url, {
     prepare: false,
-    ssl: "require",
+    ssl: needsSsl(url) ? "require" : false,
     max: 5,
     // 空闲连接保留 2 分钟：实测挂起集中在「新建连接到 pooler」这一步（约一半概率挂死），
     // 已建立的连接一直健康，所以尽量少重连、多复用

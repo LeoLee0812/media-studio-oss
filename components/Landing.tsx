@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Rss,
   Keyboard,
+  FolderOpen,
   Sparkles,
 } from "lucide-react";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
@@ -50,6 +51,7 @@ const STAGES = [
 const SOURCES = [
   { icon: Rss, name: "RSS 订阅", desc: "自选信源每日自动入池" },
   { icon: Keyboard, name: "手动录入", desc: "随时塞一条进来" },
+  { icon: FolderOpen, name: "本地导入", desc: "整个 Obsidian 文件夹批量入池" },
 ];
 
 const GUARDS = [
