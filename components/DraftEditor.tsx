@@ -41,6 +41,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { AI_ILLUSTRATE_STYLES, resolveAiIllustrateStyle } from "@/lib/illustrate-styles";
+import { extractImageFiles, uploadPastedImage } from "@/lib/paste-image";
 
 // 未知平台兜底：字典查不到就显示原始平台字符串，避免留空白
 function platformLabel(p: string): string {
@@ -102,6 +103,11 @@ export function DraftEditor({
   const [content, setContent] = useState(initial.content ?? "");
   const [status, setStatus] = useState<DraftStatus>(initial.status);
   const [publishedUrl, setPublishedUrl] = useState(initial.published_url ?? "");
+  // 正文里粘贴/拖拽图片：textarea 元素引用（取光标位置用）+ 上传态提示 + 占位符序号
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+  const [pasteMsg, setPasteMsg] = useState("");
+  const [pasteError, setPasteError] = useState(false);
+  const pasteSeq = useRef(0);
   const [stats, setStats] = useState<StatsForm>(() => statsFromMeta(initial.meta));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -393,6 +399,53 @@ export function DraftEditor({
     setDownloadingImgs(false);
   }
 
+  // ===== 正文里粘贴 / 拖拽图片 =====
+  // textarea 是纯文本控件，浏览器对「粘贴一张截图」什么都不做，必须自己接管：
+  // 先在光标处插一个占位行让你看见事情在发生，图片压缩+上传换成 Blob 公网直链后，
+  // 再把占位替换成 Markdown 图片语法（右侧预览随即加载出图）。用直链不用 base64 的
+  // 理由与 AI 配图链路一致：base64 粘不进公众号，也会把正文撑到 MB 级。
+  async function handleImageFiles(files: File[]) {
+    if (files.length === 0) return;
+    const el = bodyRef.current;
+    setPasteError(false);
+    setPasteMsg(`${files.length} 张图片上传中…`);
+
+    // 每张图一个唯一占位，上传完成顺序不定也不会替换错（并发上传，一张失败不拖累其余）
+    const tokens = files.map(() => `![上传中…](uploading-${++pasteSeq.current})`);
+    const start = el?.selectionStart ?? content.length;
+    const end = el?.selectionEnd ?? start;
+    setContent((prev) => {
+      const before = prev.slice(0, start);
+      const after = prev.slice(end);
+      // 图片必须自成段落，光标前后不是空行就补上
+      const lead = before && !before.endsWith("\n\n") ? (before.endsWith("\n") ? "\n" : "\n\n") : "";
+      const tail = after && !after.startsWith("\n\n") ? (after.startsWith("\n") ? "\n" : "\n\n") : "";
+      return before + lead + tokens.join("\n\n") + tail + after;
+    });
+
+    const results = await Promise.all(
+      files.map(async (f, i) => {
+        try {
+          const url = await uploadPastedImage(f);
+          setContent((prev) => prev.replace(tokens[i], `![粘贴图片](${url})`));
+          return null;
+        } catch (e) {
+          // 失败的占位直接撤掉，别在正文里留一行永远转不出来的「上传中」
+          setContent((prev) => prev.replace(tokens[i] + "\n\n", "").replace(tokens[i], ""));
+          return e instanceof Error ? e.message : String(e);
+        }
+      }),
+    );
+
+    const failed = results.filter(Boolean) as string[];
+    if (failed.length === 0) {
+      setPasteMsg(`已插入 ${files.length} 张图片（记得点保存）`);
+    } else {
+      setPasteError(true);
+      setPasteMsg(`${failed.length}/${files.length} 张上传失败：${failed[0]}`);
+    }
+  }
+
   // AI 配图：LLM 选插图点 + 图库搜图插入正文（可撤销），图片经代理下载到封面绑定文件夹。
   // 服务端已把新正文与新配图清单落库（此前不落库，meta.illustrations 停留在旧清单，
   // 「下载图片」会下到跟正文对不上的旧图），这里同步更新本地清单与脏检查基线。
@@ -552,13 +605,34 @@ export function DraftEditor({
               <label className="mb-1 block text-sm font-medium">正文</label>
               {/* 公众号稿：编辑区固定高度，与右侧预览做比例滚动同步 */}
               <Textarea
-                ref={isWechat ? (scrollSync.left.ref as (el: HTMLTextAreaElement | null) => void) : undefined}
+                ref={(el) => {
+                  // 两处都要这个元素：滚动同步（仅公众号）与粘贴图片时取光标位置
+                  bodyRef.current = el;
+                  if (isWechat) {
+                    (scrollSync.left.ref as (el: HTMLTextAreaElement | null) => void)(el);
+                  }
+                }}
                 onScroll={isWechat ? scrollSync.left.onScroll : undefined}
+                onPaste={(e) => {
+                  const imgs = extractImageFiles(e.clipboardData);
+                  if (imgs.length === 0) return; // 普通文本粘贴照旧
+                  e.preventDefault();
+                  void handleImageFiles(imgs);
+                }}
+                onDrop={(e) => {
+                  const imgs = extractImageFiles(e.dataTransfer);
+                  if (imgs.length === 0) return;
+                  e.preventDefault();
+                  void handleImageFiles(imgs);
+                }}
                 rows={18}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 className={"font-mono text-sm" + (isWechat ? " h-[70vh] resize-none" : "")}
               />
+              <p className={"mt-1 text-xs " + (pasteError ? "text-destructive" : "text-muted-foreground")}>
+                {pasteMsg || "截图可直接 ⌘V 粘贴（也支持把图片文件拖进来）：自动压缩上传并插入到光标处。"}
+              </p>
             </div>
 
             {/* AI 修改：按反馈定向改稿，未点名部分保留；结果可一键撤销，不自动保存 */}

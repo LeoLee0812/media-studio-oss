@@ -2,6 +2,25 @@
 
 维护规则：每次功能改动在本文件顶部追加条目——日期 + 改了什么 + 为什么 + 涉及文件。
 
+## 2026-08-03 正文编辑区支持粘贴 / 拖拽图片
+
+- **改了什么**：稿件页正文 textarea 接管 `paste` 与 `drop` 事件——截图直接 ⌘V，或把图片文件拖进来，
+  就在光标处插入一行占位「上传中…」，图片压缩后传 Vercel Blob 换公网直链，再把占位替换成
+  `![粘贴图片](直链)`，右侧排版预览随即加载出图。多张并发上传，一张失败只撤掉它自己的占位。
+- **为什么原来不行**：textarea 是纯文本控件，浏览器对「粘贴一张图」本身不做任何事——剪贴板里的
+  图片数据在 `clipboardData.files/items` 里，不主动去取就等于没发生。这不是 bug，是必须自己写的功能。
+- **为什么必须换成外链而不是 base64 内嵌**（与 AI 配图链路同一条理由）：公众号编辑器粘贴富文本时
+  只会抓取外链 `<img>` 转存，base64 粘不过去；而且 base64 写进 `ms_drafts.content` 会让正文涨到 MB 级。
+- **上传前先压**：Retina 截图动辄 5-10MB，超过 Vercel Serverless 4.5MB 请求体上限。浏览器里 canvas
+  等比缩到最长边 1920 + JPEG 0.9；小于 800KB 的图原样传（不把干净 PNG 白白转 JPEG，截图文字最怕二次压缩）。
+- **只读演示站**：`/api/images/upload` 是 POST，`READ_ONLY=1` 下由 middleware 统一 403，
+  前端照常显示上传失败提示——与其它写操作行为一致，不需要单独兜底。
+- **依赖**：上传落 Vercel Blob，自部署需要在 Vercel 项目里开通 Blob 存储（`BLOB_READ_WRITE_TOKEN`），
+  与 AI 配图链路共用同一份配置。
+- **涉及文件**：`app/api/images/upload/route.ts`（新）、`lib/paste-image.ts`（新）、`components/DraftEditor.tsx`
+
+---
+
 ## 2026-08-03 配图与封面预设化 + 素材流就地采集
 
 - **改了什么（一）配图与封面预设**：设置页新增「配图与封面预设」卡片（`components/settings/ImagePresetCard.tsx`），
