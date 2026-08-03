@@ -40,12 +40,7 @@ import {
   Download,
   Wand2,
 } from "lucide-react";
-
-// 与 lib/illustrate-ai.ts 的 AI_ILLUSTRATE_STYLES 保持一致（客户端组件不引服务端模块，这里复制常量）
-const AI_ILLUSTRATE_STYLES = [
-  { key: "handdrawn_knowledge_card", label: "手绘知识风" },
-  { key: "quirky_doodle_character_flow", label: "怪诞小人风（工作流/方法论）" },
-] as const;
+import { AI_ILLUSTRATE_STYLES, resolveAiIllustrateStyle } from "@/lib/illustrate-styles";
 
 // 未知平台兜底：字典查不到就显示原始平台字符串，避免留空白
 function platformLabel(p: string): string {
@@ -92,7 +87,16 @@ interface EditorSnapshot {
 }
 const snap = (s: EditorSnapshot) => JSON.stringify(s);
 
-export function DraftEditor({ draft: initial, topic }: { draft: Draft; topic: Topic | null }) {
+export function DraftEditor({
+  draft: initial,
+  topic,
+  presetAiStyle,
+}: {
+  draft: Draft;
+  topic: Topic | null;
+  /** 设置页预设的 AI 配图风格，作为本页下拉框的初始选中项（逐篇仍可临时改） */
+  presetAiStyle?: string;
+}) {
   const router = useRouter();
   const [title, setTitle] = useState(initial.title ?? "");
   const [content, setContent] = useState(initial.content ?? "");
@@ -139,7 +143,7 @@ export function DraftEditor({ draft: initial, topic }: { draft: Draft; topic: To
 
   // AI 生成配图（认知锚点链路，仅公众号）：不搜图，拆认知锚点后用 gpt-image-2 现生现画。
   // 与上面的图库配图并存，两个按钮互不影响；一张图真金白银，服务端硬上限 4 张。
-  const [aiIllustrateStyle, setAiIllustrateStyle] = useState<string>(AI_ILLUSTRATE_STYLES[0].key);
+  const [aiIllustrateStyle, setAiIllustrateStyle] = useState<string>(resolveAiIllustrateStyle(presetAiStyle).key);
   const [illustratingAi, setIllustratingAi] = useState(false);
   const [illustrateAiMsg, setIllustrateAiMsg] = useState("");
   const [illustrateAiError, setIllustrateAiError] = useState(false);

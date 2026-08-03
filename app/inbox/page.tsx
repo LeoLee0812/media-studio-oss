@@ -1,6 +1,7 @@
 import { listMaterialsLite, listTopics } from "@/lib/queries";
 import { llmEnabled } from "@/lib/generate";
 import { InboxClient } from "@/components/InboxClient";
+import { SourceSyncButtons } from "@/components/SourceSyncButtons";
 import type { TopicStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -29,9 +30,13 @@ export default async function InboxPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 px-4 py-6">
-      <div>
-        <h1 className="text-2xl font-bold">素材流</h1>
-        <p className="text-sm text-muted-foreground">从素材里发现选题，别原样搬运。</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">素材流</h1>
+          <p className="text-sm text-muted-foreground">从素材里发现选题，别原样搬运。</p>
+        </div>
+        {/* 采集源就地手动拉取，不用再绕去设置页 */}
+        <SourceSyncButtons />
       </div>
       {truncated && (
         <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">

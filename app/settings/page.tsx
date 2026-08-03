@@ -7,6 +7,7 @@ import {
   resolveProviderConfig,
   resolveTranslateConfig,
   resolveFlashConfig,
+  resolveImagePreset,
   getStoredConfig,
 } from "@/lib/config";
 import { LLM_PROVIDER_IDS, type LlmProvider } from "@/lib/llm-providers";
@@ -91,6 +92,9 @@ export default async function SettingsPage() {
   );
   const llmProviders = Object.fromEntries(entries) as Record<LlmProvider, ProviderState>;
 
+  // 配图与封面预设（生文流水线的默认走法）
+  const imagePreset = resolveImagePreset(stored);
+
   const init: SettingsInit = {
     writingStyle: normalizeStyle(stored.writingStyle),
     llmEnabled: llm.apiKey.length > 0,
@@ -122,6 +126,10 @@ export default async function SettingsPage() {
     flashKeyConfigured: flash.apiKey.length > 0,
     flashProvider: flash.provider,
     flashModel: flash.model,
+    illustrateMode: imagePreset.mode,
+    aiIllustrateStyle: imagePreset.aiStyleKey,
+    aiIllustrateCount: imagePreset.aiCount,
+    coverStyle: imagePreset.coverStyle.key,
   };
 
   return (

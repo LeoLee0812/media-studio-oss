@@ -1,6 +1,13 @@
 import { getSyncState, setSyncState } from "./queries";
 import { normalizeStyle, type WritingStyle } from "./styles";
 import { LLM_PROVIDERS, isLlmProvider, type LlmProvider } from "./llm-providers";
+import {
+  MAX_AI_ILLUSTRATIONS,
+  normalizeIllustrateMode,
+  resolveAiIllustrateStyle,
+  type IllustrateMode,
+} from "./illustrate-styles";
+import { resolveCoverStyle, type CoverStyle } from "./cover-styles";
 
 // ===== 运行时配置中心 =====
 // API 配置（DeepSeek 文案引擎 + 生图中转）统一在设置页管理，存 ms_sync_state 的 app_config 键。
@@ -60,6 +67,14 @@ export interface AppConfig {
   dailySummary?: boolean;
   // RSS 订阅源列表（网页设置管理，不走 env）
   rssFeeds?: RssFeedConfig[];
+  // ===== 配图与封面预设（生文流水线按这套预设走，不用生成后再逐篇挑）=====
+  // 文内配图默认方式：search 图库搜图 / ai AI 生图解 / off 不配图
+  illustrateMode?: IllustrateMode;
+  // 预设为 AI 生图时用哪套风格 + 自动配几张（1-4）
+  aiIllustrateStyle?: string;
+  aiIllustrateCount?: number;
+  // 封面默认风格 key（lib/cover-styles.ts 注册表），比例跟随该风格的 defaultRatio
+  coverStyle?: string;
 }
 
 // 读取存储的原始配置（可能为空）
@@ -80,6 +95,34 @@ export async function updateStoredConfig(patch: Partial<AppConfig>): Promise<App
 export async function resolveWritingStyle(): Promise<WritingStyle> {
   const c = await getStoredConfig();
   return normalizeStyle(c.writingStyle);
+}
+
+// ===== 生效的「配图与封面预设」=====
+// 生文流水线（lib/finalize-wechat.ts）与稿件页的初始选中项都读这一份，用户在设置页预设一次，
+// 之后每篇稿子自动按这套走，不用生成完再逐篇挑搜图还是 AI 生图、封面用什么风格。
+// 脏值一律退回默认（搜图 + 手绘知识风 + 玻璃气泡风封面），不让坏配置打断出稿。
+export interface ImagePreset {
+  mode: IllustrateMode;
+  aiStyleKey: string;
+  aiCount: number;
+  coverStyle: CoverStyle;
+}
+
+export function resolveImagePreset(c: AppConfig): ImagePreset {
+  const rawCount = Number(c.aiIllustrateCount);
+  const aiCount = Number.isFinite(rawCount)
+    ? Math.max(1, Math.min(Math.floor(rawCount), MAX_AI_ILLUSTRATIONS))
+    : 2; // 自动链路默认 2 张：够用又不至于让一篇稿子烧掉 4 张图的钱
+  return {
+    mode: normalizeIllustrateMode(c.illustrateMode),
+    aiStyleKey: resolveAiIllustrateStyle(c.aiIllustrateStyle).key,
+    aiCount,
+    coverStyle: resolveCoverStyle(c.coverStyle),
+  };
+}
+
+export async function getImagePreset(): Promise<ImagePreset> {
+  return resolveImagePreset(await getStoredConfig());
 }
 
 // 生效的文案引擎提供方：DB > env > deepseek

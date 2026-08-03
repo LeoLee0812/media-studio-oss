@@ -3,6 +3,11 @@ import { getLlmModel } from "./llm";
 import { getPrompt } from "./prompt-store";
 import { resolveImageConfig } from "./config";
 import { baseSizeForRatio } from "./cover";
+import {
+  AI_ILLUSTRATE_STYLES,
+  MAX_AI_ILLUSTRATIONS,
+  resolveAiIllustrateStyle,
+} from "./illustrate-styles";
 
 // ===== AI 生成知识图解正文配图（并存链路，不搜图）=====
 // 与 lib/illustrate-server.ts（图库搜图）并存的第二条正文配图链路：
@@ -13,32 +18,12 @@ import { baseSizeForRatio } from "./cover";
 //    render_handdrawn_body / render_quirky_doodle_body，改写成中文），拼出最终绘图提示词
 // ③ 调同一套生图中转端点的 gpt-image-2（/images/generations，写法参考 lib/cover.ts 的
 //    generateCoverImage）逐张生图，返回 base64
-// 成本提醒：一张图真金白银，MAX_AI_ILLUSTRATIONS 是硬上限，且本链路只在用户手动点击
-// 「AI 生成配图」时触发，不接入任何自动/批量流程。
+// 成本提醒：一张图真金白银，MAX_AI_ILLUSTRATIONS 是硬上限。触发方式有两条：稿件页手动点
+// 「AI 生成配图」，或设置页把「文内配图默认方式」预设成 AI 生图后由生文流水线自动调用。
 
-// 单次最多生成 4 张——多了成本不可控，也超出「正文配图」应有的数量级
-export const MAX_AI_ILLUSTRATIONS = 4;
-
-// 两套正文配图风格：手绘知识风（正文配图之王，通用知识类文章优先）、
-// 怪诞小人风（AI 工作流/系统流程/方法论拆解更贴切）
-export const AI_ILLUSTRATE_STYLES = [
-  {
-    key: "handdrawn_knowledge_card",
-    label: "手绘知识风",
-    promptId: "illustrate_ai_style_handdrawn",
-  },
-  {
-    key: "quirky_doodle_character_flow",
-    label: "怪诞小人风",
-    promptId: "illustrate_ai_style_quirky_doodle",
-  },
-] as const;
-
-export type AiIllustrateStyleKey = (typeof AI_ILLUSTRATE_STYLES)[number]["key"];
-
-export function resolveAiIllustrateStyle(key?: string) {
-  return AI_ILLUSTRATE_STYLES.find((s) => s.key === key) ?? AI_ILLUSTRATE_STYLES[0];
-}
+// 风格常量搬去 lib/illustrate-styles.ts（纯数据，客户端也 import），这里原样转出保持旧引用可用
+export { AI_ILLUSTRATE_STYLES, MAX_AI_ILLUSTRATIONS, resolveAiIllustrateStyle };
+export type { AiIllustrateStyle } from "./illustrate-styles";
 
 /** 图注 → 文件名安全片段：只留中英文与数字，截前 12 个字符（与 lib/illustrate.ts 的图库配图同规则） */
 function captionSlug(caption: string): string {
@@ -278,4 +263,77 @@ export async function uploadIllustrationToBlob(params: {
     addRandomSuffix: true,
   });
   return blob.url;
+}
+
+// ---- ⑤ 整篇编排（拆锚点 → 逐张生图 → 传 Blob → 插回正文）----
+// 稿件页的 /api/drafts/[id]/illustrate-ai 路由与生文流水线（lib/finalize-wechat.ts）
+// 共用这一份编排，不许在调用点各抄一遍——两条入口曾经就差在「谁记得写 meta.aiIllustrations」。
+// 只做纯计算 + 网络请求，不碰数据库：落库由调用方按各自的并发策略处理。
+
+export interface AiIllustrationResult {
+  filename: string;
+  caption: string;
+  coreIdea: string;
+  visualAnchor: string;
+  url: string;
+  size: string;
+}
+
+export async function illustrateArticleWithAi(params: {
+  title: string;
+  content: string;
+  styleKey?: string;
+  maxImages?: number;
+}): Promise<{ content: string; images: AiIllustrationResult[]; failedCount: number }> {
+  const title = params.title ?? "";
+  const content = params.content ?? "";
+  const styleKey = resolveAiIllustrateStyle(params.styleKey).key;
+  const maxImages = Math.max(
+    1,
+    Math.min(Number(params.maxImages) || MAX_AI_ILLUSTRATIONS, MAX_AI_ILLUSTRATIONS),
+  );
+
+  // ① 拆认知锚点（一次 LLM 调用，不产生图像成本）
+  const anchors = await planAiIllustrationAnchors({ title, content, maxImages });
+
+  // ② 逐个锚点拼提示词 + 生图（真金白银，严格按顺序执行，不并发放大瞬时成本）
+  const blocks = content.split(/\n{2,}/);
+  const succeeded: { anchor: AnchorPlan; url: string; size: string; filename: string }[] = [];
+  let failedCount = 0;
+  for (let i = 0; i < anchors.length; i++) {
+    const anchor = anchors[i];
+    try {
+      const prompt = await buildAiIllustrationPrompt({ title, anchor, styleKey });
+      const { b64, size } = await generateAiIllustrationImage({ prompt, ratio: "16:9" });
+      // 生完立刻传 Blob 换直链：base64 既粘不进公众号也会撑爆正文和响应体，
+      // 全链路只在这一行之内碰 base64，往后一律只传 URL
+      const filename = aiIllustrationFilename(i, anchor.caption);
+      const url = await uploadIllustrationToBlob({ b64, filename });
+      succeeded.push({ anchor, url, size, filename });
+    } catch (e) {
+      console.error("[illustrate-ai] 单张生图/上传失败：", e);
+      failedCount++;
+    }
+  }
+  if (succeeded.length === 0) throw new Error("认知锚点已拆出，但生图全部失败，请重试");
+
+  // ③ 从后往前插入正文（Blob 公网直链，编号不受影响，与图库配图链路同规则）
+  const parts = [...blocks];
+  for (let i = succeeded.length - 1; i >= 0; i--) {
+    const { anchor, url } = succeeded[i];
+    parts.splice(anchor.after, 0, `![${anchor.caption}](${url})`);
+  }
+
+  return {
+    content: parts.join("\n\n"),
+    images: succeeded.map((s) => ({
+      filename: s.filename,
+      caption: s.anchor.caption,
+      coreIdea: s.anchor.coreIdea,
+      visualAnchor: s.anchor.visualAnchor,
+      url: s.url,
+      size: s.size,
+    })),
+    failedCount,
+  };
 }

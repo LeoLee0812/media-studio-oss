@@ -2,6 +2,33 @@
 
 维护规则：每次功能改动在本文件顶部追加条目——日期 + 改了什么 + 为什么 + 涉及文件。
 
+## 2026-08-03 配图与封面预设化 + 素材流就地采集
+
+- **改了什么（一）配图与封面预设**：设置页新增「配图与封面预设」卡片（`components/settings/ImagePresetCard.tsx`），
+  一次性预设「文内配图默认方式（图库搜图 / AI 生成图解 / 不配图）+ AI 图解风格与张数 + 封面默认风格」，
+  生文流水线 `finalizeWechatDraft()` 出稿时直接照办：预设 AI 生图就自动拆认知锚点现生现画（张数由预设收紧，默认 2 张），
+  封面 `meta.cover` 也按预设风格落库，前端随后自动生图。
+- **为什么**：原来这两个选择都发生在「稿件已经生成之后」——回稿件页手动点「AI 配图 / AI 生成配图」、
+  再在封面区挑一次风格。风格其实是稳定偏好，不该每篇重挑一遍。现在预设一次，之后全自动；
+  稿件页的逐篇临时切换原样保留（AI 配图下拉框的初始选中项也跟随预设）。
+- **顺带收口**：AI 配图的整篇编排从路由搬进 `lib/illustrate-ai.ts` 的 `illustrateArticleWithAi()`，
+  稿件页路由与生文流水线共用同一份实现；风格常量抽到纯数据文件 `lib/illustrate-styles.ts`，
+  消掉 DraftEditor 里那份手抄副本（与 `lib/cover-styles.ts` 同款做法）。
+  前端收尾 `runPostDraftTasks` 按实际产出分派下载：AI 图解落「AI配图」子目录，图库配图落「子图」。
+- **成本提醒**：AI 生图一张真金白银、每张 30-60 秒，张数上限仍是 4；卡片里对慢和贵都写明了。
+- **改了什么（二）素材流就地采集**：素材流页和仪表盘加上 `SourceSyncButtons`，直接点「拉取 RSS」。
+  组件与具体源无关：`SOURCES` 里加一项 + 补一个 `/api/ingest/<id>` 路由就能接新源，多源时自动多出
+  一个「全部拉取」按钮并行跑一遍（各源打的是互不相干的外部接口、各自独立的函数实例与连接池，
+  串行只是白等成倍的时间）。
+- **为什么**：RSS 手动拉取此前只在设置页有入口。采集是日常动作，不该藏在设置里。
+- **涉及文件**：`lib/illustrate-styles.ts`（新）、`lib/illustrate-ai.ts`、`lib/finalize-wechat.ts`、
+  `lib/config.ts`、`lib/draft-tasks.ts`、`app/api/config/route.ts`、`app/api/drafts/[id]/illustrate-ai/route.ts`、
+  `components/settings/ImagePresetCard.tsx`（新）、`components/SettingsClient.tsx`、`app/settings/page.tsx`、
+  `components/DraftEditor.tsx`、`app/drafts/[id]/page.tsx`、`components/SourceSyncButtons.tsx`（新）、
+  `app/inbox/page.tsx`、`app/page.tsx`
+
+---
+
 ## 2026-07-31 素材流支持本地文件夹批量导入（Obsidian vault）
 
 - **改了什么**：「添加素材」弹窗拆成「手动录入 / 批量导入」两个标签页。批量导入支持三种投喂：

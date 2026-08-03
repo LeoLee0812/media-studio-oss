@@ -11,6 +11,7 @@ import {
 } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { SourceSyncButtons } from "@/components/SourceSyncButtons";
 import { formatRelativeTime } from "@/lib/format";
 import {
   SOURCE_LABELS,
@@ -90,6 +91,7 @@ export default async function DashboardPage() {
             </Link>
           </p>
         </div>
+        <SourceSyncButtons />
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

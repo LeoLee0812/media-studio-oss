@@ -1,6 +1,7 @@
 "use client";
 import type { WritingStyle } from "@/lib/styles";
 import { StyleCard } from "@/components/settings/StyleCard";
+import { ImagePresetCard } from "@/components/settings/ImagePresetCard";
 import { LlmEngineCard } from "@/components/settings/LlmEngineCard";
 import { ImageEngineCard } from "@/components/settings/ImageEngineCard";
 import { SearchEngineCard } from "@/components/settings/SearchEngineCard";
@@ -11,6 +12,7 @@ import { NotifyCard } from "@/components/settings/NotifyCard";
 import type { ProviderState } from "@/components/settings/LlmEngineCard";
 import type { LlmProvider } from "@/lib/llm-providers";
 import type { SyncInfo } from "@/components/settings/shared";
+import type { IllustrateMode } from "@/lib/illustrate-styles";
 
 // 设置页初始配置。私有单人工作台（全站门禁之后）：API key 明文下发，配合「点击可见」展示。
 export interface SettingsInit {
@@ -49,6 +51,11 @@ export interface SettingsInit {
   flashKeyConfigured: boolean;
   flashProvider: LlmProvider;
   flashModel: string;
+  /** 配图与封面预设：生文流水线出稿时直接按它走 */
+  illustrateMode: IllustrateMode;
+  aiIllustrateStyle: string;
+  aiIllustrateCount: number;
+  coverStyle: string;
 }
 
 // 纯布局容器：把 init 按配置域切片，分发给各自的卡片组件。
@@ -57,6 +64,12 @@ export function SettingsClient({ init }: { init: SettingsInit }) {
   return (
     <div className="space-y-4">
       <StyleCard initialStyle={init.writingStyle} />
+      <ImagePresetCard
+        illustrateMode={init.illustrateMode}
+        aiIllustrateStyle={init.aiIllustrateStyle}
+        aiIllustrateCount={init.aiIllustrateCount}
+        coverStyle={init.coverStyle}
+      />
 
       <LlmEngineCard
         enabled={init.llmEnabled}

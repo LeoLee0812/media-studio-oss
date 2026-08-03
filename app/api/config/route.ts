@@ -9,9 +9,12 @@ import {
   resolveImageSearchConfig,
   resolveProviderConfig,
   isSafePublicUrl,
+  resolveImagePreset,
   type AppConfig,
   type RssFeedConfig,
 } from "@/lib/config";
+import { isIllustrateMode, resolveAiIllustrateStyle, MAX_AI_ILLUSTRATIONS } from "@/lib/illustrate-styles";
+import { COVER_STYLES } from "@/lib/cover-styles";
 import { LLM_PROVIDERS, LLM_PROVIDER_IDS, isLlmProvider } from "@/lib/llm-providers";
 import { isGateEnabled } from "@/lib/auth";
 import { getSyncState } from "@/lib/queries";
@@ -40,6 +43,8 @@ export async function GET() {
   // 非密字段——设置页照样能填新 key（写入不受影响），只是不再回显已存的值。
   const openMode = !isGateEnabled();
   const maskSecret = (v: string) => (openMode ? "" : v);
+  // 配图与封面预设（非密，公开模式下也照常回传）
+  const imagePreset = resolveImagePreset(stored);
   const llmProviders = Object.fromEntries(
     await Promise.all(
       LLM_PROVIDER_IDS.map(async (id) => {
@@ -80,6 +85,11 @@ export async function GET() {
     // RSS 订阅源（url/板块/备注非密，直接回传供编辑）
     rssFeeds: Array.isArray(stored.rssFeeds) ? stored.rssFeeds : [],
     rssSync: rss,
+    // 配图与封面预设（生文流水线按它走）
+    illustrateMode: imagePreset.mode,
+    aiIllustrateStyle: imagePreset.aiStyleKey,
+    aiIllustrateCount: imagePreset.aiCount,
+    coverStyle: imagePreset.coverStyle.key,
   });
 }
 
@@ -181,6 +191,23 @@ function validateRssFeedsPatch(patch: Partial<AppConfig>, body: Record<string, u
   return null;
 }
 
+// 配图与封面预设域：文内配图方式 + AI 配图风格/张数 + 封面风格。
+// 脏值一律忽略（不写库），由 resolveImagePreset 兜底到默认，不让坏配置打断出稿。
+function validateImagePresetPatch(patch: Partial<AppConfig>, body: Record<string, unknown>) {
+  if (isIllustrateMode(body.illustrateMode)) patch.illustrateMode = body.illustrateMode;
+  if (typeof body.aiIllustrateStyle === "string") {
+    const key = body.aiIllustrateStyle.trim();
+    if (key && resolveAiIllustrateStyle(key).key === key) patch.aiIllustrateStyle = key;
+  }
+  const count = Number(body.aiIllustrateCount);
+  if (Number.isFinite(count) && count >= 1) {
+    patch.aiIllustrateCount = Math.min(Math.floor(count), MAX_AI_ILLUSTRATIONS);
+  }
+  if (typeof body.coverStyle === "string" && COVER_STYLES.some((s) => s.key === body.coverStyle)) {
+    patch.coverStyle = body.coverStyle;
+  }
+}
+
 // 邮件通知域：Resend key + 每日摘要开关
 function validateNotifyPatch(patch: Partial<AppConfig>, body: Record<string, unknown>) {
   applySecretField(patch, body, "resendApiKey");
@@ -201,6 +228,7 @@ export async function PUT(req: Request) {
   validateFlashPatch(patch, body);
   validateRetentionPatch(patch, body);
   validateNotifyPatch(patch, body);
+  validateImagePresetPatch(patch, body);
 
   const rssError = validateRssFeedsPatch(patch, body);
   if (rssError) return NextResponse.json({ error: rssError }, { status: 400 });

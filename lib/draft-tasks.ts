@@ -218,10 +218,26 @@ export async function runPostDraftTasks(
   h: PostDraftHandlers = {},
 ): Promise<void> {
   const illustTask = (async () => {
+    // 服务端按设置页预设决定走哪条配图链路：AI 生图落在 meta.aiIllustrations（存「AI配图」子目录），
+    // 图库搜图落在 meta.illustrations（存「子图」子目录）。这里按实际产出分派下载。
+    const aiImages = (draft.meta?.aiIllustrations ?? []) as AiIllustrationRef[];
+    if (aiImages.length > 0) {
+      h.onIllustMsg?.(`正文已插入 ${aiImages.length} 张 AI 图解，原图下载中…`);
+      const s = await downloadAiIllustrations(aiImages, noteTitle);
+      const parts = [`已插入 ${aiImages.length} 张 AI 图解`];
+      if (s.toFolder) parts.push(`${s.toFolder} 张原图已备份到本地文件夹`);
+      if (s.toDownload) parts.push(`${s.toDownload} 张走了浏览器下载（${s.hint || "可能被拦截"}）`);
+      if (s.failed) parts.push(`${s.failed} 张备份失败（稿件页可重试）`);
+      parts.push("复制到公众号时图片随富文本自动转存");
+      h.onIllustMsg?.(parts.join("，"));
+      return;
+    }
     const images = (draft.meta?.illustrations ?? []) as IllustrationRef[];
     if (images.length === 0) {
       // 配图为空 = 服务端自动配图被跳过或失败了，说出来，别让用户以为「本来就没图」
-      h.onIllustMsg?.("本篇没有自动配图（未配置搜图 key 或配图失败），稿件页可手动「AI 配图」");
+      h.onIllustMsg?.(
+        "本篇没有自动配图（设置页预设为「不配图」、未配置对应 key，或配图失败），稿件页可手动配图",
+      );
       return;
     }
     h.onIllustMsg?.(`正文已插入 ${images.length} 张配图，原图下载中…`);
