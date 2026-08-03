@@ -248,7 +248,7 @@ export async function generateAiIllustrationImage(params: {
 //    （结论见 docs/wechat-assets.md，图库配图链路一直好用就是因为 Pexels 本身给的是外链）；
 // ② 4 张 base64 图会让 ms_drafts.content 涨到 MB 级，也会让本路由的 JSON 响应超出
 //    Serverless 的响应体上限，直接把整条链路打挂。
-// Blob store：media-studio（hnd1 东京，与函数区域对齐），access=public，
+// Blob store 建议与函数部署区域对齐（少一次跨洲往返），access=public，
 // 凭据走 Vercel 自动注入的 BLOB_READ_WRITE_TOKEN，不用手写。
 export async function uploadIllustrationToBlob(params: {
   b64: string;

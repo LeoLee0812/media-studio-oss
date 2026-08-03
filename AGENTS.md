@@ -31,6 +31,7 @@ app/            页面 + API 路由（force-dynamic）
                 cover · images · ingest（手动采集） · cron（daily 每日编排 + cleanup 手动清理） · prompts · config
 lib/            db · auth · queries · llm · prompt-store · prompts · generate · styled-generate · styles
                 finalize-wechat · draft-tasks（前端收尾任务唯一实现） · illustrate · cover · image-search
+                illustrate-styles / cover-styles（风格注册表，纯数据，服务端与客户端共用）· paste-image
                 rss · rss-presets（预置订阅源库） · ingest · cleanup · wemark/
 components/     UI kit(ui/*) + settings/（设置页域卡片）+ 业务组件（SiteHeader/InboxClient/TopicsBoard/TopicDetail/DraftEditor/CoverGenerator...）
 prompts/        ★写作规则唯一事实源

@@ -40,6 +40,10 @@
   一个「全部拉取」按钮并行跑一遍（各源打的是互不相干的外部接口、各自独立的函数实例与连接池，
   串行只是白等成倍的时间）。
 - **为什么**：RSS 手动拉取此前只在设置页有入口。采集是日常动作，不该藏在设置里。
+- **顺带对齐**：默认封面风格从爆款科技风改成玻璃气泡风（`DEFAULT_COVER_STYLE`，与上游一致——
+  它不挑题材、配色也不容易撞脸），只影响「设置页没预设时」的新稿件；老稿件 `meta.cover` 不动。
+  `docs/wechat-assets.md` 补上「配图与封面预设」「正文粘贴 / 拖拽图片」两节，并修正 AI 配图那节
+  两处过时描述（图片早已走 Vercel Blob 直链而非 base64 内嵌；不再是「全程手动触发」）。
 - **涉及文件**：`lib/illustrate-styles.ts`（新）、`lib/illustrate-ai.ts`、`lib/finalize-wechat.ts`、
   `lib/config.ts`、`lib/draft-tasks.ts`、`app/api/config/route.ts`、`app/api/drafts/[id]/illustrate-ai/route.ts`、
   `components/settings/ImagePresetCard.tsx`（新）、`components/SettingsClient.tsx`、`app/settings/page.tsx`、

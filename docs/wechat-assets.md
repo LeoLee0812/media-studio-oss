@@ -30,11 +30,40 @@ LLM 按编号段落挑 2-4 个插图点（`illustrate_system`）→ Pexels / Pix
 - 两套风格：手绘知识风 `handdrawn_knowledge_card`、怪诞小人风 `quirky_doodle_character_flow`
   （后者适合 AI 工作流 / 系统流程 / 方法论拆解类文章）。锚点文本译自 cc2image 的 `STYLE_ANCHORS`，
   **只保留材质/配色/负面清单，不带封面专属的刊头与底部留白带规则**
-- 入口：稿件页「AI 生成配图（知识图解，现生现画）」卡片，与原「AI 配图」并排；**全程手动触发**，
-  不接自动/批量流程（一张图真金白银）。接口 `POST /api/drafts/[id]/illustrate-ai`
+- 整篇编排收口在 `illustrateArticleWithAi()`（`lib/illustrate-ai.ts`）：稿件页路由与生文流水线
+  共用同一份，不许在调用点各抄一遍
+- 两个入口：① 稿件页「AI 生成配图（知识图解，现生现画）」卡片手动触发，接口
+  `POST /api/drafts/[id]/illustrate-ai`；② 设置页把「文内配图默认方式」预设成 AI 生图后，
+  生文流水线出稿时自动跑（见下面「配图与封面预设」）。张数上限恒为 4，自动链路默认 2 张
+- 图片不内嵌 base64，一律传 Vercel Blob 换公网直链再插回正文（`uploadIllustrationToBlob()`）：
+  公众号只抓外链 `<img>` 转存，且 base64 会把 `ms_drafts.content` 撑到 MB 级
 - 本地保存走 `downloadAiIllustrations()` → `<笔记名>/AI配图/`（AI 图没有可代理的外部 URL，不走 `/api/images/proxy`）
-- **已知取舍**：图片 base64 直接嵌进 `content`，单篇 4 张 medium 图会让该字段涨到 MB 级。
-  Postgres 扛得住，但要做真图床/CDN 的话就从这条链路下手
+
+## 配图与封面预设（2026-08-03 起）
+设置页「配图与封面预设」卡片（`components/settings/ImagePresetCard.tsx`）预设三件事：
+**文内配图默认方式**（`search` 图库搜图 / `ai` AI 生图解 / `off` 不配图）、**AI 图解风格与张数**、
+**封面默认风格**。存 `app_config`，服务端由 `resolveImagePreset()`（`lib/config.ts`）解析，脏值一律
+回落默认，不让坏配置打断出稿。
+
+- `finalizeWechatDraft()` 按预设分流：`ai` 走 `illustrateArticleWithAi()`（张数取预设值）、
+  `search` 走图库链路、`off` 只记一条 warning。封面 `meta.cover` 直接落预设风格
+- 语义推荐 `recommendCoverStyles()` 不再决定落库值，只在稿件页作为切换建议展示——风格是稳定
+  偏好，逐篇由关键词打分抖来抖去会让一批稿子的封面不成系列
+- 风格常量在纯数据文件 `lib/illustrate-styles.ts`（服务端 / 客户端共用单一事实源，与
+  `lib/cover-styles.ts` 同款做法），别再在组件里抄副本
+- 稿件页的逐篇临时切换原样保留，AI 配图下拉框的初始选中项跟随预设
+
+## 正文粘贴 / 拖拽图片（2026-08-03 起）
+稿件页正文 textarea 接管 `paste` 与 `drop`（`lib/paste-image.ts` + `components/DraftEditor.tsx`）：
+截图 ⌘V 或拖入图片文件 → 光标处插一行占位「上传中…」→ 浏览器内压缩 → `POST /api/images/upload`
+传 Vercel Blob → 占位替换成 `![粘贴图片](直链)`。多张并发，一张失败只撤掉它自己的占位并报错。
+
+- textarea 是纯文本控件，浏览器对「粘贴一张图」本身不做任何事（数据在 `clipboardData.files/items` 里），
+  这不是 bug，是必须自己写的功能
+- **上传前先压**：Retina 截图动辄 5-10MB，超过 Serverless 4.5MB 请求体上限。canvas 等比缩到最长边
+  1920 + JPEG 0.9；小于 800KB 的原样传（不把干净 PNG 白白转 JPEG，截图文字最怕二次压缩）
+- 换外链而非 base64 内嵌，理由与 AI 配图链路同一条
+- 需要 Vercel Blob 凭据（`BLOB_READ_WRITE_TOKEN`）；只读演示站下该接口由 middleware 统一 403
 
 ## 生成收尾三路并行（2026-07-14 起）
 正文落库后，选题页/洗稿页把三个收尾任务 `Promise.allSettled` **并行**跑（完成时间差异大，谁先完成谁先亮）：

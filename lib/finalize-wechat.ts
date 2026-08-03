@@ -83,8 +83,10 @@ export async function finalizeWechatDraft(d: Draft): Promise<FinalizeResult> {
   }
 
   try {
-    // 落库风格用设置页预设的封面风格（默认仍是玻璃气泡风，2026-07-28 用户拍板）；语义推荐不
-    // 决定落库值，只在稿件页作为切换建议展示。再按该风格有没有模板参考图定链路：
+    // 落库风格用设置页预设的封面风格（没预设时是 DEFAULT_COVER_STYLE 玻璃气泡风）；
+    // 语义推荐（recommendCoverStyles）不再决定落库值，只在稿件页作为切换建议展示——
+    // 风格是稳定偏好，逐篇由关键词打分抖来抖去反而让一批稿子的封面不成系列。
+    // 再按该风格有没有模板参考图定链路：
     // 有参考图走模板直生，没有走锚点直生（靠风格定义 + 版式骨架，同样不用文案引擎先写提示词）。
     // 两条直生链路的 meta.cover 都只记 mode + 风格，前端随后调 /api/cover/image 时才真正生图。
     const tpl = await templateAvailability();

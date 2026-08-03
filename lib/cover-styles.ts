@@ -132,8 +132,9 @@ export const COVER_STYLES: CoverStyle[] = [
 
 export const COVER_RATIOS = ["2.35:1", "16:9", "4:3", "3:4", "1:1"] as const;
 
-/** 默认风格（老稿件 meta 里存着已下线风格值时的回落目标） */
-export const DEFAULT_COVER_STYLE = COVER_STYLES[0];
+/** 默认风格（设置页没预设时新稿件的落库值 + 老稿件 meta 里存着已下线风格值时的回落目标）。
+ * 与上游一致选玻璃气泡风：它不挑题材，配色也不像爆款科技风那样容易撞脸。 */
+export const DEFAULT_COVER_STYLE = COVER_STYLES.find((s) => s.key === "glass_blob")!;
 
 /** 按 key 取风格；无效值（含已下线的 cinematic / huashu）一律回落到默认风格 */
 export function resolveCoverStyle(key?: string): CoverStyle {
