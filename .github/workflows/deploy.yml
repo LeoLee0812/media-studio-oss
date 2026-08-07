@@ -1,0 +1,59 @@
+# push 到 main 就自动构建并部署到 Cloudflare Workers。
+#
+# 为什么用 GitHub Actions 而不是 Cloudflare 自带的 Workers Builds：
+# Workers Builds 要在面板里用 GitHub App 授权一次，而且它跑的是固定的构建命令；
+# 本项目的构建是「next build → OpenNext 打成 Worker → wrangler deploy」三步，
+# 放在 Actions 里更直白，也顺带留下可读的构建日志。
+#
+# 需要两个仓库 Secret（Settings → Secrets and variables → Actions）：
+#   CLOUDFLARE_API_TOKEN   权限：Workers Scripts:Edit + Workers KV:Edit + D1:Edit
+#   CLOUDFLARE_ACCOUNT_ID  账号 ID
+#
+# 注意：运行时密钥（AUTH_SECRET / CRON_SECRET / SITE_URL / 各家模型 key）不在这里配，
+# 它们是 Worker 的 secret（wrangler secret put），部署不会覆盖已存在的值。
+
+name: Deploy to Cloudflare Workers
+
+on:
+  push:
+    branches: [main]
+    # 只改文档不触发部署，省构建额度
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".github/**"
+  workflow_dispatch: {}
+
+# 连续 push 时只保留最新一次部署，旧的直接取消
+concurrency:
+  group: deploy-cloudflare
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查
+        run: npx tsc --noEmit
+
+      - name: 构建（next build + OpenNext 打包成 Worker）
+        run: npx opennextjs-cloudflare build
+
+      - name: 部署
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # 构建已经在上一步做完，这里只上传
+          command: deploy
