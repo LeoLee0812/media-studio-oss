@@ -2,6 +2,20 @@
 
 维护规则：每次功能改动在本文件顶部追加条目——日期 + 改了什么 + 为什么 + 涉及文件。
 
+## 2026-08-07 从 Vercel + Supabase 整体迁到 Cloudflare
+
+**改了什么**：部署形态、数据库、对象存储、定时任务全部换成 Cloudflare 自家的东西，不再依赖任何外部服务。
+
+- 部署：`@opennextjs/cloudflare` 把整个应用打成一个 Worker；`worker.ts` 包住 OpenNext 的 fetch 再补 `scheduled` 处理器接每日采集（替掉 `vercel.json` 的 cron，该文件已删）
+- 数据库：Supabase Postgres → **Cloudflare D1**。`lib/db.ts` 重写成一层标签模板 shim，保住原来的 ``sql`...` `` 写法；`lib/queries.ts` / `lib/cleanup.ts` / `lib/ingest.ts` 的 SQL 改成 SQLite 方言；建表 SQL 从 `supabase/migrations/` 挪到 `db/0001_init.sql`
+- 对象存储：Vercel Blob → Cloudflare KV / R2（`lib/blob.ts`），直链走自家域名的 `/f/[...key]`
+- 采集：拆成「编排 + 分片」两层，绕开 Workers 单次调用 50 个子请求的上限（`lib/ingest.ts` + `app/api/ingest/rss/route.ts`）
+- 新增 `lib/self-fetch.ts`：回调自己必须走 service binding，fetch 公网域名会 522
+
+**为什么**：Workers 连不上外部 Postgres——TCP 能建、SSLRequest 回 `S`，但 `startTls()` 一律失败。要么上 Hyperdrive，要么换 D1；换 D1 顺带把基础设施收敛到一家。
+
+**涉及文件**：`lib/db.ts` `lib/queries.ts` `lib/blob.ts` `lib/self-fetch.ts` `lib/ingest.ts` `lib/cleanup.ts` `lib/illustrate-ai.ts` `lib/image-search.ts` `app/f/[...key]/route.ts` `app/api/ingest/rss/route.ts` `app/api/cron/daily/route.ts` `app/api/images/*` `app/api/rewrite/route.ts` `worker.ts` `wrangler.jsonc` `open-next.config.ts` `next.config.ts` `db/0001_init.sql` `README.md` `CLAUDE.md` `docs/*`
+
 ## 2026-08-03 正文编辑区支持粘贴 / 拖拽图片
 
 - **改了什么**：稿件页正文 textarea 接管 `paste` 与 `drop` 事件——截图直接 ⌘V，或把图片文件拖进来，

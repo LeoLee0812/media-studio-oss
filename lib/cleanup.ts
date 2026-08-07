@@ -4,7 +4,7 @@ import {
   pruneStaleMaterials,
   purgeSyncCache,
 } from "./queries";
-import { sql } from "./db";
+import { sql, isoDaysAgo } from "./db";
 import { resolveRssRetentionDays } from "./config";
 
 // 纳入清理的「时效性来源」：这些是每天流进来的活水，过时即失去选题价值。
@@ -73,17 +73,25 @@ export interface CleanupDryRunLine {
 // dry-run：用与 runCleanup 完全相同的判定条件与常量数一遍，但不写库。
 // 收在这里（而不是 scripts/cleanup.ts 里手写 SQL）是为了保证口径永不漂移——
 // 此前脚本里硬编码过 30 天真删窗口，与 PURGE_DAYS=2 对不上，dry-run 数字失真。
+function prettyBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
 export async function dryRunCleanup(): Promise<CleanupDryRunLine[]> {
   const retention = await resolveRetentionDays();
   const lines: CleanupDryRunLine[] = [];
 
   for (const source of TIMELY_SOURCES) {
-    const [row] = await sql<{ n: string }[]>`
-      select count(*)::text as n from ms_materials m
-      where m.source = ${source}
-        and m.status in ('new', 'ignored')
-        and m.created_at < now() - make_interval(days => ${retention[source]})
-        and not exists (select 1 from ms_topics t where m.id = any(t.material_ids))`;
+    const [row] = await sql<{ n: number }>`
+      select count(*) as n from ms_materials
+      where source = ${source}
+        and status in ('new', 'ignored')
+        and created_at < ${isoDaysAgo(retention[source])}
+        and id not in (
+          select je.value from ms_topics t, json_each(t.material_ids) je
+        )`;
     lines.push({ label: `${source} 超期直接删除（保留期 ${retention[source]} 天）`, count: Number(row.n) });
   }
 
@@ -91,21 +99,26 @@ export async function dryRunCleanup(): Promise<CleanupDryRunLine[]> {
     { prefix: "cover_image", days: COVER_RETENTION_DAYS, label: "封面图回收" },
     { prefix: "xhs_assist", days: XHS_ASSIST_RETENTION_DAYS, label: "小红书缓存回收" },
   ]) {
-    const [row] = await sql<{ n: string; sz: string }[]>`
-      select count(*)::text as n,
-             pg_size_pretty(coalesce(sum(pg_column_size(s.value)), 0)::bigint) as sz
-      from ms_sync_state s
-      where s.key like ${`${prefix}:%`}
+    // 体积估算：Postgres 版用 pg_size_pretty(pg_column_size(...))，D1 没有这套函数，
+    // 改成 length(value)（TEXT 的字符数，对 base64 封面来说约等于字节数）自己格式化
+    const [row] = await sql<{ n: number; bytes: number }>`
+      select count(*) as n, coalesce(sum(length(value)), 0) as bytes
+      from ms_sync_state
+      where key like ${`${prefix}:%`}
         and (
           not exists (
-            select 1 from ms_drafts d where d.id::text = replace(s.key, ${`${prefix}:`}, '')
+            select 1 from ms_drafts d where d.id = replace(key, ${`${prefix}:`}, '')
           )
           or (
-            s.value->>'updatedAt' ~ '^\\d{4}-\\d{2}-\\d{2}T'
-            and (s.value->>'updatedAt')::timestamptz < now() - make_interval(days => ${days})
+            json_extract(value, '$.updatedAt') like '____-__-__T%'
+            and json_extract(value, '$.updatedAt') < ${isoDaysAgo(days)}
           )
         )`;
-    lines.push({ label: `${label}（保留期 ${days} 天）`, count: Number(row.n), extra: `约 ${row.sz}` });
+    lines.push({
+      label: `${label}（保留期 ${days} 天）`,
+      count: Number(row.n),
+      extra: `约 ${prettyBytes(Number(row.bytes ?? 0))}`,
+    });
   }
 
   return lines;

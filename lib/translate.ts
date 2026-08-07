@@ -69,7 +69,7 @@ export async function translateNewMaterials(limit = 150): Promise<TranslateResul
   const model = await getTranslateModel();
   if (!model) return { candidates: 0, translated: 0, failed: 0, skipped: "翻译引擎未启用或未配置 key" };
 
-  const rows = await guardRead("translateCandidates", () => sql<Candidate[]>`
+  const rows = await guardRead("translateCandidates", () => sql<Candidate>`
     select id, title, summary from ms_materials
     where title_en is null
       and title is not null

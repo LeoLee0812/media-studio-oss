@@ -3,7 +3,9 @@
 ## RSS 采集
 `lib/rss.ts` 的 `fetchFeed()` + `lib/ingest.ts` 的 `ingestRss()`，源在设置页配置（存 `app_config.rssFeeds`）。每个源可标一个「板块」（自由命名的分类字符串，如「AI 资讯」），采进来的素材归入对应板块。
 
-**并行抓取（2026-07-18 起）**：所有源用 `Promise.allSettled(feeds.map(fetchFeed))` 并行抓取（各源是不同网站、无相互限流，可放心并发），墙钟由单源 20s 抓取超时上限封顶，不随源数线性增长；`allSettled` 保住「一源挂了不影响其他源」的隔离。落库仍按源串行（每源一次批量 upsert，`insertRssItems()`），只占一个写连接，不打爆 transaction pooler。
+**并行抓取（2026-07-18 起）**：所有源用 `Promise.allSettled(feeds.map(fetchFeed))` 并行抓取（各源是不同网站、无相互限流，可放心并发），墙钟由单源 20s 抓取超时上限封顶，不随源数线性增长；`allSettled` 保住「一源挂了不影响其他源」的隔离。落库仍按源串行（`insertRssItems()`，受 D1 单语句 100 个绑定参数上限约束，按「90 ÷ 列数」切片成几条多行 upsert）。
+
+**分片采集（迁 Cloudflare 后）**：Workers 单次调用只有 50 个子请求（免费版，重定向也算），十几个源一起抓必然超。`/api/ingest/rss` 不带参数时是编排层，把源切成每片 `RSS_FEEDS_PER_INVOCATION`（默认 6）个，经指向自己的 service binding 逐片回调——每次调用各拿一份新预算。**不能 fetch 自己的公网域名**，那样会 522，见 `lib/self-fetch.ts`。
 
 - **自报 UA**：默认 `media-studio-sync/1.0`（可用 env `SYNC_UA` 覆盖），绝不伪装浏览器
 - **预置源库**：`lib/rss-presets.ts` 内置多组按分类整理、逐条实测过的订阅源（AI 官方动态 / AI 科技媒体 / 开发者视角 / AI 工具发布 / 科学与认知 / 财经与加密），设置页「RSS 订阅源」卡片可逐条或整组一键添加

@@ -5,13 +5,13 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square&logo=typescript)
 ![Tailwind](https://img.shields.io/badge/Tailwind-v4-38bdf8?style=flat-square&logo=tailwindcss)
 ![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-f38020?style=flat-square&logo=cloudflare)
-![Supabase](https://img.shields.io/badge/Supabase-Postgres-3fcf8e?style=flat-square&logo=supabase)
+![D1](https://img.shields.io/badge/Cloudflare-D1-f38020?style=flat-square&logo=cloudflare)
 ![Last Commit](https://img.shields.io/github/last-commit/LeoLee0812/media-studio-oss?style=flat-square&logo=github)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 
 自媒体「素材 → 稿件」一站式工作台。RSS 订阅采集选题素材，AI 把素材扩写成**公众号成稿（正文 + 自动配图 + AI 封面）**，再一键导出**小红书 / 知乎专栏 / 推特长篇 / 抖音长文**。自部署、单用户，密码门禁可选（不配就是公开站）。
 
-整站跑在 **Cloudflare Workers** 上——一个 Worker 装下全部页面与 API，定时采集用 Cron Triggers，图片存 KV / R2，数据库走 Hyperdrive 连 Supabase Postgres。免费额度就能长期跑。
+整站跑在 **Cloudflare 一家** 上——一个 Worker 装下全部页面与 API，数据库用 D1，图片存 KV / R2，定时采集用 Cron Triggers。没有任何外部数据库或对象存储依赖，免费额度就能长期跑。
 
 ```
 RSS 订阅源 ──┐
@@ -109,28 +109,21 @@ RSS 给的是行业动态，**真正让内容有辨识度的是你自己那套�
 
 ````text
 请帮我部署开源项目 media-studio（仓库 https://github.com/LeoLee0812/media-studio-oss）。
-这是一个 Next.js 16 全栈应用，部署形态是 Cloudflare Workers（@opennextjs/cloudflare），
-数据库用 Supabase Postgres，经 Cloudflare Hyperdrive 连接。按顺序做：
+这是一个 Next.js 16 全栈应用，整套跑在 Cloudflare 上：Workers（@opennextjs/cloudflare）
++ D1 数据库 + KV 图片存储 + Cron Trigger 定时采集。没有任何外部服务依赖。按顺序做：
 
 1. git clone https://github.com/LeoLee0812/media-studio-oss.git 并进入目录，npm install。
 
-2. 数据库初始化（需要一个 Supabase 项目，没有就提示我去 https://supabase.com 免费创建一个）：
-   a. 先执行建角色语句（密码用 openssl rand -hex 16 生成）：
-      create role ms_app login password '<生成的密码>';
-      grant usage on schema public to ms_app;
-      grant ms_app to postgres;
-   b. 再执行仓库里 supabase/migrations/0001_ms_init.sql 的全文。
-   如果你能直接访问我的 Supabase（MCP 或 CLI），就替我执行；
-   否则把上面两段 SQL 整理好，告诉我粘到 Supabase 后台 SQL Editor 里跑。
+2. 建 Cloudflare 资源（需要一个免费 Cloudflare 账号，wrangler 登录或给我 API Token）：
+   a. npx wrangler d1 create media-studio        # 记下 database_id
+   b. npx wrangler kv namespace create media     # 记下 id，用来存图片
+   c. 把这两个 id 填进 wrangler.jsonc 的 d1_databases 与 kv_namespaces
+   d. 把 services.WORKER_SELF_REFERENCE.service 和顶层 name 改成你自己的 worker 名
 
-3. Cloudflare 侧准备（需要一个免费 Cloudflare 账号，wrangler 登录或给 API Token）：
-   a. 建 KV 命名空间存图片：npx wrangler kv namespace create media
-   b. 建 Hyperdrive 配置指向第 2 步的 Supabase 连接串：
-      npx wrangler hyperdrive create media-studio-db --connection-string="postgresql://ms_app.<项目ref>:<密码>@aws-0-<区域>.pooler.supabase.com:6543/postgres"
-      ⚠️ 这一步不能省：Workers 直连 Supabase 的 TLS 握手会失败，必须走 Hyperdrive。
-   c. 把两个 id 填进 wrangler.jsonc 的 kv_namespaces 与 hyperdrive 段。
+3. 建表：npx wrangler d1 execute <你的库名> --remote --file=db/0001_init.sql
+   跑完确认有 ms_materials / ms_topics / ms_drafts / ms_sync_state 四张表。
 
-4. 配置密钥（wrangler secret put <名字>，逐个填）：
+4. 配置密钥（npx wrangler secret put <名字>，逐个填）：
    - ACCESS_PASSWORD：想加锁就给我设一个好记的站点访问密码并最后告诉我；
      不想要密码（公开站）就跳过这一项，全站免登录
    - AUTH_SECRET：openssl rand -hex 32
@@ -139,11 +132,15 @@ RSS 给的是行业动态，**真正让内容有辨识度的是你自己那套�
    - 文案引擎 Key（DEEPSEEK_API_KEY 等）我稍后自己在网站设置页填，先跳过。
    本地开发用的同名变量写进 .dev.vars（已被 .gitignore 忽略）。
 
-5. npm run deploy 部署，替我验证：打开站点地址（配了 ACCESS_PASSWORD 就先登录），
+5. npm run deploy 部署。注意首次部署时指向自己的 service binding 还绑不上
+   （worker 尚不存在），先把 wrangler.jsonc 里的 services 段注释掉部一次，
+   部署成功后再解开重部一次。
+
+6. 替我验证：打开站点地址（配了 ACCESS_PASSWORD 就先登录），
    到设置页「RSS 订阅源」展开预置源库，整组添加「AI 科技媒体」，保存后点「手动拉取」，
    确认素材流页面出现素材。
 
-5.5 顺便替我配订阅源：我要做「<填你的方向>」方向的自媒体，
+7. 顺便替我配订阅源：我要做「<填你的方向>」方向的自媒体，
    请找 12~20 个这个方向还在更新的优质 RSS 源（官方博客 / 垂直媒体 / 从业者 Newsletter /
    社区热帖，英文源也要），逐个 curl 验证返回 200、是合法 RSS/Atom、最近 30 天有新条目，
    然后列成「分类 + 名称 + 地址 + 一句话理由」的表格给我，我在设置页添加。没有 RSS 的站
@@ -158,55 +155,54 @@ RSS 给的是行业动态，**真正让内容有辨识度的是你自己那套�
 <details>
 <summary>展开手动安装步骤（5 步）</summary>
 
-**1. 建库（Supabase）**：新建 [Supabase](https://supabase.com) 项目，SQL Editor 里先建角色再跑迁移：
-
-```sql
-create role ms_app login password '<你的DB密码>';
-grant usage on schema public to ms_app;
-grant ms_app to postgres;
-```
-
-然后执行 `supabase/migrations/0001_ms_init.sql` 全文（4 张表 + RLS，anon key 默认全拒）。
-
-**2. 建 Cloudflare 资源**：
+**1. 建 Cloudflare 资源**：
 
 ```bash
-npx wrangler kv namespace create media          # 图片存储，记下返回的 id
-npx wrangler hyperdrive create media-studio-db \
-  --connection-string="postgresql://ms_app.<projectRef>:<密码>@aws-0-<区域>.pooler.supabase.com:6543/postgres"
+npx wrangler d1 create media-studio          # 记下 database_id
+npx wrangler kv namespace create media       # 记下 id
 ```
 
-把两个 id 填回 `wrangler.jsonc` 的 `kv_namespaces[0].id` 与 `hyperdrive[0].id`。
+把两个 id 填回 `wrangler.jsonc` 的 `d1_databases[0].database_id` 与 `kv_namespaces[0].id`，
+并把顶层 `name` 和 `services[0].service` 都改成你自己的 worker 名。
 
-**3. 配置密钥**：
+**2. 建表**：
 
-| 变量 | 说明 | 怎么配 |
-| --- | --- | --- |
-| `ACCESS_PASSWORD` | 全站访问密码；**不配 = 公开站**，免登录直接用 | `wrangler secret put` |
-| `READ_ONLY` | 填 `1` 则全站禁写（公开演示站用）；不配 = 正常可写 | `wrangler secret put` |
-| `AUTH_SECRET` | `openssl rand -hex 32` | `wrangler secret put` |
-| `CRON_SECRET` | `openssl rand -hex 24`，每日采集定时任务靠它鉴权 | `wrangler secret put` |
-| `SITE_URL` | 站点对外地址，邮件回链与图片直链要用 | `wrangler secret put` |
-| `DEEPSEEK_API_KEY` 等 | 文案引擎任选一家，也可部署后在设置页填 | 设置页 |
+```bash
+npx wrangler d1 execute <你的库名> --remote --file=db/0001_init.sql
+```
+
+四张表（`ms_materials` / `ms_topics` / `ms_drafts` / `ms_sync_state`），结构与注意事项见该文件开头。
+
+**3. 配置密钥**（`npx wrangler secret put <名字>`）：
+
+| 变量 | 说明 |
+| --- | --- |
+| `ACCESS_PASSWORD` | 全站访问密码；**不配 = 公开站**，免登录直接用 |
+| `READ_ONLY` | 填 `1` 则全站禁写（公开演示站用）；不配 = 正常可写 |
+| `AUTH_SECRET` | `openssl rand -hex 32` |
+| `CRON_SECRET` | `openssl rand -hex 24`，每日采集定时任务靠它鉴权 |
+| `SITE_URL` | 站点对外地址，邮件回链与图片直链要用 |
+| `DEEPSEEK_API_KEY` 等 | 文案引擎任选一家，也可部署后在设置页填 |
 
 本地开发把同名变量写进 `.dev.vars`（已被 `.gitignore` 忽略）。完整变量清单见 `.env.example`。
 
-**4. 本地跑起来**：`npm install && npm run preview`（先构建再起本地 workerd，能拿到 KV/Hyperdrive 绑定）。纯前端调试也可以 `npm run dev`。
+**4. 本地跑起来**：`npm install && npm run preview`（先构建再起本地 workerd，能拿到 D1/KV 绑定）。纯前端调试也可以 `npm run dev`。
 
-**5. 部署**：`npm run deploy`。`wrangler.jsonc` 已带每日采集 Cron Trigger（UTC 01:00 = 北京 09:00）。想挂自定义域名，在 Cloudflare 面板给这个 Worker 加一条 Custom Domain 即可（证书自动签发）。
+**5. 部署**：`npm run deploy`。首次部署时 `services` 段指向的 worker 还不存在，先注释掉部一次，成功后解开再部一次。`wrangler.jsonc` 已带每日采集 Cron Trigger（UTC 01:00 = 北京 09:00）。想挂自定义域名，在 Cloudflare 面板给这个 Worker 加一条 Custom Domain 即可（证书自动签发）。
 
 可选：`RESEND_API_KEY` + `NOTIFY_TO` 开每日摘要邮件。
 
 </details>
 
-## 部署在 Cloudflare 上要知道的四件事
+## 迁到 Cloudflare 踩的五个坑
 
-这个项目原本跑在 Vercel 上，迁到 Cloudflare Workers 时踩到的坑都写在这儿了，自部署可以少走弯路：
+这个项目原本跑在 Vercel + Supabase 上。迁移时踩到的都写在这儿了，自部署可以少走弯路：
 
-1. **数据库必须走 Hyperdrive，不能直连。** Workers 能和 Supabase 建 TCP、SSLRequest 也回 `S`，但 `startTls()` 一律 `TLS Handshake Failed`（6543 / 5432 都一样）。Hyperdrive 免费版就能用，配好之后连接串换成它给的本地串即可。
-2. **postgres.js 得用它的 Workers 版。** 这个包里有两份实现，`src/index.js` 走 `node:net`/`node:tls`，`cf/src/index.js` 走 `cloudflare:sockets`；靠 `serverExternalPackages: ["postgres"]` 把它留给 OpenNext 的 esbuild 去解析（esbuild 带 `workerd` 条件），才会挑中后者。一旦被 Turbopack 提前打进产物，运行时就会拿到 Node 版，报出极具误导性的 `Too many subrequests`。
-3. **单次调用只有 50 个子请求（免费版），重定向也算。** 十几个 RSS 源一起抓必然超。所以采集被拆成「编排 + 分片」：`/api/ingest/rss` 不带参数是编排层，把源切片后逐片回调自己，每次调用各拿一份新的预算。分片大小是 `RSS_FEEDS_PER_INVOCATION`（默认 6）。
-4. **图片直链走自家域名。** 不再依赖第三方对象存储：粘贴的截图与 AI 配图都进 KV（或 R2），由 `/f/<key>` 路由读出。公众号、知乎抓图时看到的也是你自己的域名。
+1. **Workers 连不上外部 Postgres。** TCP 能建、SSLRequest 也回 `S`，但 `startTls()` 一律 `TLS Handshake Failed`（6543 / 5432 都一样）。要么上 Hyperdrive，要么像本项目这样直接换成 D1。顺带一提：postgres.js 在 Workers 上会疯狂重连，最终把这个错误报成一句极具误导性的 `Too many subrequests`，查根因时别被它带偏。
+2. **时间不要交给 SQLite 算。** `datetime('now')` 给的是 `YYYY-MM-DD HH:MM:SS`，跟库里 ISO-8601（带 `T` 和 `Z`）的串比大小会**静默出错**——查不出结果也不报错。本项目所有时间加减都在 JS 里算好再绑进去（`lib/db.ts` 的 `isoDaysAgo` / `isoHoursAgo`），SQL 里只做字符串比较。
+3. **单条语句最多绑 100 个参数。** 批量插入素材是 14 列，20 行就是 280 个参数，直接被拒。所以入库按「90 ÷ 列数」切片分多条语句写（`lib/ingest.ts`）。
+4. **单次调用只有 50 个子请求（免费版），重定向也算。** 十几个 RSS 源一起抓必然超。采集因此拆成「编排 + 分片」：`/api/ingest/rss` 不带参数是编排层，把源切片后逐片回调自己，每次调用各拿一份新预算。分片大小是 `RSS_FEEDS_PER_INVOCATION`（默认 6）。
+5. **回调自己不能 fetch 公网域名。** Worker 请求自己所在 zone 的域名等于绕回边缘，实测稳定 522。要配一个指向自己的 **service binding**（`WORKER_SELF_REFERENCE`）走内部直连，见 `lib/self-fetch.ts`。
 
 ## 第三方服务与中立声明
 
@@ -221,8 +217,8 @@ npx wrangler hyperdrive create media-studio-db \
 
 - **Next.js 16 App Router 全栈**，无独立后端；前端不直连数据库，读写全走 server route
 - **部署形态**：`@opennextjs/cloudflare` 把整个应用打成单个 Worker；页面与 API 同进程，静态资源走 Workers Static Assets；`worker.ts` 在 OpenNext 的 fetch 之外补了一个 `scheduled` 处理器接每日定时采集
-- **安全模型**：4 张表 RLS 全开、仅 `ms_app` 角色有策略；服务端经 Hyperdrive → transaction pooler 直连；全站 HMAC 签名 cookie 门禁（可选，不配 `ACCESS_PASSWORD` 即公开模式，此时配置接口不回显密钥）；`READ_ONLY=1` 时 middleware 拒绝一切写请求；采集/生成侧 URL 均过 SSRF 校验
-- **连接自愈**：针对 pooler 挂死场景的三层防御（超时→重建连接池→重试），见 `lib/db.ts` / `lib/queries.ts`
+- **数据层**：D1（SQLite）+ 一层标签模板 shim（`lib/db.ts`），保住 ``sql`select ... where id = ${id}` `` 与 ``sql`insert into t ${sql(obj)}` `` 这类写法，查询散落各处也不用手拼占位符
+- **安全模型**：数据库整体挂在 Worker 的 D1 绑定上，公网没有任何入口；全站 HMAC 签名 cookie 门禁（可选，不配 `ACCESS_PASSWORD` 即公开模式，此时配置接口不回显密钥）；`READ_ONLY=1` 时 middleware 拒绝一切写请求；采集/生成侧 URL 均过 SSRF 校验
 - **提示词单一事实源**：全部写作规则在 `prompts/` 目录 md 文件，运行时可被数据库覆盖值热替换
 - **结构化输出降级**：部分模型 `generateObject` 概率性退化（实测记录在 `docs/architecture.md`），注册表按模型自动降级并在 UI 明示
 
@@ -233,7 +229,7 @@ app/          页面 + API 路由（含 /f/[...key] 图片直链）
 lib/          核心逻辑（采集/生成/封面/配图/排版渲染/连接自愈/对象存储）
 components/   业务组件 + 设置页域卡片
 prompts/      写作规则与系统提示词（单一事实源）
-supabase/     建表 SQL
+db/           建表 SQL（D1 / SQLite）
 worker.ts     Cloudflare Workers 入口（包 OpenNext 的 fetch + 定时任务）
 wrangler.jsonc  Workers 配置（绑定、Cron Trigger、静态资源）
 docs/         子系统文档

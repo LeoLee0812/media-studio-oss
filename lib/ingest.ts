@@ -1,4 +1,4 @@
-import { sql } from "./db";
+import { sql, isoHoursAgo } from "./db";
 import { getSyncState, setSyncState, guardRead, guardWrite } from "./queries";
 import { runCleanup, type CleanupResult } from "./cleanup";
 import { resolveRssFeeds, resolveRssRetentionDays, resolveDailySummary } from "./config";
@@ -29,7 +29,8 @@ export interface RssIngestResult {
 const RSS_MAX_ITEMS_PER_FEED = 20;
 
 // 一次批量 upsert 一个源的条目，返回实际入库数（去重后）。
-// 为什么批量：替代原来每条一次 INSERT 的几十次网络往返，一个源一次多行 upsert 写完。
+// 为什么批量：替代原来每条一次 INSERT 的几十次往返，一个源几条多行 upsert 写完
+// （受 D1 单语句 100 个绑定参数的上限约束，见下面的切片逻辑）。
 // dedupe_key 用链接：同一篇文章跨天重复出现在 feed 里也只入一次；源内先按 key 去重，
 // 避免同一批里出现重复链接（on conflict do nothing 对批内重复安全，去重只为计数准确）。
 async function insertRssItems(
@@ -81,18 +82,26 @@ async function insertRssItems(
     "url", "summary", "content", "category", "tags",
     "published_at", "status", "raw",
   ] as const;
-  // guardWrite 包裹：守住硬约定 #4（pooler 挂死自愈），与 createMaterial 同一层保护
-  const insertedRows = await guardWrite("ingestRss", () => sql`
-    insert into ms_materials ${sql(rows, ...cols)}
-    on conflict (dedupe_key) do nothing
-    returning id`);
-  return insertedRows.length;
+  // 【D1 限制】单条语句最多绑定 100 个参数。14 列 × 20 行 = 280，会直接被拒，
+  // 所以按「90 / 列数」切片，分几条语句写。切片之间不需要事务：
+  // dedupe_key 唯一 + on conflict do nothing，重跑一次也不会重复入库。
+  const perStatement = Math.max(1, Math.floor(90 / cols.length));
+  let inserted = 0;
+  for (let i = 0; i < rows.length; i += perStatement) {
+    const chunk = rows.slice(i, i + perStatement);
+    // guardWrite 包裹：守住硬约定 #4，与 createMaterial 同一层保护
+    const insertedRows = await guardWrite("ingestRss", () => sql`
+      insert into ms_materials ${sql(chunk, ...cols)}
+      on conflict (dedupe_key) do nothing
+      returning id`);
+    inserted += insertedRows.length;
+  }
+  return inserted;
 }
 
 // 采集 RSS：读配置里的订阅源，**并行抓取**（自报 UA），每源一次批量 upsert 幂等入库。
 // 并行安全性：各订阅源是不同网站，各打各的、无相互限流，可放心并发抓取。
-// 抓取并行、DB 写按源串行（每源一次批量 upsert）：既拿到并行加速，又只占一个写连接，
-// 不把 transaction pooler 连接数打爆（硬约定 #4）。
+// 抓取并行、DB 写按源串行（每源一次批量 upsert）：既拿到并行加速，写入又是可控的少数几条语句。
 // 错误按 feed 隔离：某源抓取失败（allSettled 的 rejected）或落库失败只标记该源，不影响其他源。
 // 采集侧只收「保留期内」的条目（发布时间超过 rssRetentionDays 的直接跳过）——
 // 清理侧按 created_at 算过期，归档型 feed 的陈年旧文若放进来要占满收件箱一整个保留期。
@@ -197,16 +206,17 @@ async function sendDailySummary(rssNew: number): Promise<{ sent: boolean; reason
   if (rssNew <= 0) return { sent: false, reason: "今日无新增素材" };
 
   // 今日新增里按入库时间取前 10 条
-  const top = await guardRead("dailySummaryTop", () => sql<
-    { title: string | null; summary: string | null }[]
-  >`
+  const top = await guardRead("dailySummaryTop", () => sql<{
+    title: string | null;
+    summary: string | null;
+  }>`
     select title, summary from ms_materials
-    where source = 'rss' and created_at >= now() - interval '24 hours'
+    where source = 'rss' and created_at >= ${isoHoursAgo(24)}
     order by created_at desc
     limit 10`);
   // 当前待发稿件数（未发布的全部稿件）
-  const pending = await guardRead("dailySummaryPending", () => sql<{ count: string }[]>`
-    select count(*)::text from ms_drafts where status <> 'published'`);
+  const pending = await guardRead("dailySummaryPending", () => sql<{ count: number }>`
+    select count(*) as count from ms_drafts where status <> 'published'`);
   const pendingCount = Number(pending[0]?.count ?? 0);
 
   const topHtml = top

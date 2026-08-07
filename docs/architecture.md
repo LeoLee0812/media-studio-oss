@@ -3,7 +3,7 @@
 ## 技术栈
 - Next.js 16 (App Router) + React 19 + TypeScript + Tailwind v4 + shadcn/base-ui + gsap
 - **不用 `output: export`**：本项目需要 API 路由 + middleware 门禁；部署形态是 Cloudflare Workers（`@opennextjs/cloudflare` 把整个应用打成一个 Worker）
-- 数据库：Supabase 项目，4 张 `ms_` 前缀表
+- 数据库：Cloudflare D1（SQLite），4 张 `ms_` 前缀表，走 Worker 的 `DB` 绑定
 
 ## 文案引擎（四引擎）
 提供方定义收口在 **`lib/llm-providers.ts`** 注册表（纯常量，服务端与设置页共用；加一家引擎只改这个文件）：
@@ -37,23 +37,25 @@
 
 > **硬性约定**：新增/改动 AI 调用时必须从 `getPrompt(id)` 取词，不许把提示词写死在调用点。
 
-## 数据库连接方式（关键决策）
-任务原设计是「service_role key + PostgREST」，但 service_role key 无法从 MCP/CLI 自动获取。最终采用等价且更自包含的方案：
+## 数据库（关键决策）
 
-- 新建专用 Postgres 登录角色 **`ms_app`**（有独立密码），只在服务端经 **Supabase transaction pooler**（`aws-0-<region>.pooler.supabase.com:6543`）用 `postgres.js` 直连
-- 4 张表 **RLS 全开**，**只对 `ms_app` 角色建策略**（`using(true)`）；anon/publishable **无任何策略 = 默认全拒**
-- 前端不直连数据库，所有读写走 Next.js server route（`lib/db.ts` 的 `sql`）
-- 连接串来自 Hyperdrive 绑定（线上）或 env `DATABASE_URL`（本地 `.env.local` / `.dev.vars`）。
-  线上必须走 Hyperdrive：Workers 直连 Supabase 的 TLS 握手会失败
-- 安全性等价于原设计：特权访问仅存在于服务端、门禁之后；公开 key 打 `ms_` 表读不到
-- 若日后拿到 service_role key，可平滑切回 REST，但当前方案无需外部 key
+原方案是 Supabase Postgres + `postgres.js` 经 transaction pooler 直连。迁到 Cloudflare Workers 后换成 **D1**，原因是硬限制而不是偏好：Workers 能和 Supabase 建 TCP、SSLRequest 也回 `S`，但 `startTls()` 一律 `TLS Handshake Failed`（6543 / 5432 都试过）。要么上 Hyperdrive，要么换 D1；换 D1 顺带把整套基础设施收敛到 Cloudflare 一家。
 
-### 连接自愈（2026-07-11）
-serverless 下到 pooler 的连接会间歇挂死（新建连接约半数挂起、旧 socket 冻结后复用即死锁，曾致页面挂 300 秒）。对策三层：
+- 通过 Worker 的 `DB` 绑定访问，**公网没有入口，也没有连接串**——不存在密码泄漏面
+- 前端不直连数据库，所有读写走 Next.js server route
+- `lib/db.ts` 提供一层**标签模板 shim**，保住 ``sql`... ${v}` ``、``sql`insert into t ${sql(obj)}` ``、``sql`update t set ${sql(patch)}` ``、``sql`insert ... ${sql(rows, ...cols)}` `` 这些写法，片段还能互相嵌套拼 where 条件
+- 安全性等价于原设计：特权访问仅存在于服务端、门禁之后
 
-1. `db.ts` 生产环境 `connect_timeout: 3s` / `keep_alive` / `max_lifetime: 5min` + `resetSql()` 活绑定重建池
-2. `queries.ts` 读查询包 `guardRead`（5 秒超时 → 重建池 → 重试一次）
-3. 交互写包 `guardWrite`（10 秒超时 → 重建池 → 报错不重试）
+### SQLite 与 Postgres 的三处差异（改查询前必读）
+1. **没有数组与 jsonb**：`tags` / `material_ids` / `raw` / `research` / `meta` / `value` 都是 TEXT 存 JSON，读用 `json_extract`、展开用 `json_each`；出库后由 `lib/queries.ts` 的 `toMaterial` / `toTopic` / `toDraft` 还原成对象，上层与前端零改动
+2. **时间不要交给 SQLite 算**：`datetime('now')` 是 `YYYY-MM-DD HH:MM:SS`，与库里 ISO-8601（带 `T`/`Z`）比大小会**静默出错**。所有时间加减在 JS 里算好再绑（`isoDaysAgo` / `isoHoursAgo`），SQL 只做字符串比较
+3. **单条语句最多绑 100 个参数**：批量插入按「90 ÷ 列数」切片（`lib/ingest.ts`），按 id 批量查按 90 个一批（`getMaterials`）
+
+### 查询看门狗
+D1 没有连接池、没有长连接，原先那套「重建连接池」的自愈逻辑不再需要，但超时兜底保留：
+
+1. `queries.ts` 读查询包 `guardRead`（8 秒超时 → 重试一次，读是幂等的）
+2. 交互写包 `guardWrite`（16 秒超时 → 直接报错，不重试，避免重复写入）
 
 触发时打 `[db-watchdog]` 日志，可用 `wrangler tail` 或 Workers Observability 观察。
 
@@ -67,7 +69,7 @@ serverless 下到 pooler 的连接会间歇挂死（新建连接约半数挂起�
 | `ms_drafts` | 稿件（platform 当前只有 wechat，meta 存 style / cover / illustrations 等） |
 | `ms_sync_state` | 键值存储：采集状态、全站配置 app_config、提示词覆盖、封面图 base64 缓存、小红书高亮缓存 |
 
-迁移在 `supabase/migrations/`（`0001_ms_init.sql`）。
+建表 SQL 在 `db/0001_init.sql`，用 `npm run db:init` 对远端 D1 执行。
 
 ## 门禁
 - `middleware.ts` 全站门禁：cookie `ms_auth` = HMAC-SHA256(ACCESS_PASSWORD, key=AUTH_SECRET)，httpOnly

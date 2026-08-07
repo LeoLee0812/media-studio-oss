@@ -1,109 +1,219 @@
-import postgres from "postgres";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
-// Supabase transaction pooler 连接（服务端专用）。
-// 使用 ms_app 角色，RLS 只放行该角色，anon/publishable 默认全拒。
-// transaction pooler 必须 prepare:false；serverless 下连接数保持较小。
-const globalForDb = globalThis as unknown as {
-  _msSql?: ReturnType<typeof postgres>;
-};
+// ===== Cloudflare D1 数据层 =====
+//
+// 全站唯一的数据库入口。原先是 Supabase Postgres（postgres.js 直连 pooler），
+// 迁到 Cloudflare 后换成 D1——Cloudflare 自家的 SQLite：
+//   · 不需要 Hyperdrive，也不受 Workers 连不上外部 Postgres 的 TLS 限制
+//   · 走 HTTP 绑定，没有连接池、没有半死 socket，原先那套「连接自愈」的复杂度直接消失
+//   · 免费额度足够单用户长期跑
+//
+// 这里实现的是一层**标签模板 shim**，把 D1 的 prepare/bind 包成 postgres.js 那种写法：
+//
+//   await sql`select * from ms_drafts where id = ${id}`      → 参数自动占位，防注入
+//   await sql`insert into ms_topics ${sql(obj)} returning *`  → 自动展开成 (列) values (?)
+//   await sql`update ms_topics set ${sql(patch)} where ...`   → 自动展开成 col = ?, col = ?
+//   await sql`insert into ms_materials ${sql(rows, ...cols)}` → 多行批量插入
+//   sql`where ${cond}` 这类**片段可以互相嵌套**，拼 where 条件时照旧
+//
+// 为什么不直接写 d1.prepare(...)：查询散落在 queries / ingest / cleanup / translate 四处，
+// 保住这套写法能让这些文件只改 SQL 方言，不用把每条语句拆成手工拼占位符。
 
-// 本机 Postgres（localhost/127.0.0.1）默认不开 TLS，强行 ssl:require 会连不上；
-// 自部署/本地开发用本机库时自动关掉，远端一律仍走 require。
-function needsSsl(url: string): boolean {
+// ---- 片段与特殊值 ----
+
+/** 一段可组合的 SQL 片段。await 它就会执行（是个 thenable）。 */
+class Frag<T = Record<string, unknown>> {
+  constructor(
+    readonly strings: readonly string[],
+    readonly values: readonly unknown[],
+  ) {}
+
+  then<R1 = T[], R2 = never>(
+    onOk?: ((rows: T[]) => R1 | PromiseLike<R1>) | null,
+    onErr?: ((reason: unknown) => R2 | PromiseLike<R2>) | null,
+  ): Promise<R1 | R2> {
+    return run<T>(this).then(onOk, onErr);
+  }
+}
+
+/** sql.json(v)：明确按 JSON 文本存。D1 没有 jsonb，所有结构化字段都是 TEXT + json_extract 读。 */
+class JsonVal {
+  constructor(readonly value: unknown) {}
+}
+
+/** sql(obj) / sql(rows, ...cols)：插入或更新的列集合，展开形态由它前面那截 SQL 决定。 */
+class Cols {
+  constructor(
+    readonly rows: Record<string, unknown>[],
+    readonly cols: string[],
+  ) {}
+}
+
+/** sql.list([...])：展开成 (?, ?, ?)，给 in (...) 用。空数组会展开成 (null)，天然匹配不到任何行。 */
+class ListVal {
+  constructor(readonly items: unknown[]) {}
+}
+
+const IDENT = /^[a-z_][a-z0-9_]*$/i;
+function ident(name: string): string {
+  if (!IDENT.test(name)) throw new Error(`非法列名：${name}`);
+  return `"${name}"`;
+}
+
+// ---- 值绑定 ----
+// D1 只接受 null / number / string / ArrayBuffer / boolean。
+// 项目里的数组（tags、material_ids）和对象（raw、meta、research、value）统一转 JSON 文本，
+// 与建表 SQL 里那几列的 TEXT 类型对齐。
+function bindValue(v: unknown): null | number | string {
+  if (v === null || v === undefined) return null;
+  if (v instanceof JsonVal) return v.value === null || v.value === undefined ? null : JSON.stringify(v.value);
+  if (typeof v === "string" || typeof v === "number") return v;
+  if (typeof v === "boolean") return v ? 1 : 0;
+  if (v instanceof Date) return v.toISOString();
+  return JSON.stringify(v);
+}
+
+// ---- 编译：片段树 → 一条 SQL + 参数数组 ----
+interface Compiled {
+  text: string;
+  params: (null | number | string)[];
+}
+
+function compile(frag: Frag<never>): Compiled {
+  const out: Compiled = { text: "", params: [] };
+  walk(frag, out);
+  return out;
+}
+
+function walk(frag: Frag<never>, out: Compiled): void {
+  for (let i = 0; i < frag.strings.length; i++) {
+    out.text += frag.strings[i];
+    if (i >= frag.values.length) continue;
+    const v = frag.values[i];
+
+    if (v instanceof Frag) {
+      walk(v as Frag<never>, out);
+    } else if (v instanceof Cols) {
+      expandCols(v, out);
+    } else if (v instanceof ListVal) {
+      if (v.items.length === 0) {
+        out.text += "(null)";
+      } else {
+        out.text += `(${v.items.map(() => "?").join(", ")})`;
+        for (const item of v.items) out.params.push(bindValue(item));
+      }
+    } else {
+      out.text += "?";
+      out.params.push(bindValue(v));
+    }
+  }
+}
+
+// sql(obj) 到底展开成 insert 的 (列) values (…) 还是 update 的 col = ?，
+// 看它前面那截 SQL 是不是以 set 结尾——和 postgres.js 的判定思路一致。
+function expandCols(c: Cols, out: Compiled): void {
+  const isSet = /\bset\s*$/i.test(out.text);
+  if (isSet) {
+    const row = c.rows[0] ?? {};
+    const cols = c.cols.length ? c.cols : Object.keys(row);
+    if (cols.length === 0) throw new Error("update ... set 的更新字段为空");
+    out.text += cols.map((k) => `${ident(k)} = ?`).join(", ");
+    for (const k of cols) out.params.push(bindValue(row[k]));
+    return;
+  }
+  const cols = c.cols.length ? c.cols : Object.keys(c.rows[0] ?? {});
+  if (cols.length === 0) throw new Error("insert 的列集合为空");
+  const tuple = `(${cols.map(() => "?").join(", ")})`;
+  out.text += `(${cols.map(ident).join(", ")}) values ${c.rows.map(() => tuple).join(", ")}`;
+  for (const row of c.rows) for (const k of cols) out.params.push(bindValue(row[k]));
+}
+
+// ---- 执行 ----
+
+interface D1Like {
+  prepare(query: string): {
+    bind(...values: unknown[]): { all<T>(): Promise<{ results?: T[] }> };
+    all<T>(): Promise<{ results?: T[] }>;
+  };
+}
+
+const BINDING = "DB";
+
+function d1(): D1Like {
+  let env: Record<string, unknown> | undefined;
   try {
-    const host = new URL(url).hostname;
-    return !(host === "localhost" || host === "127.0.0.1" || host === "::1");
+    env = getCloudflareContext().env as unknown as Record<string, unknown>;
   } catch {
-    return true;
+    env = undefined;
   }
+  const db = env?.[BINDING] as D1Like | undefined;
+  if (!db || typeof db.prepare !== "function") {
+    throw new Error(
+      `拿不到 D1 绑定（${BINDING}）：本地开发请用 npm run preview，线上请确认 wrangler.jsonc 里的 d1_databases 配置`,
+    );
+  }
+  return db;
 }
 
-// 跑在 Cloudflare Workers 上（workerd 会把 navigator.userAgent 设成 Cloudflare-Workers）。
-// 用它来切那几个「Node 有、workerd 没有」的 socket 选项。
-const isWorkers =
-  typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
+async function run<T>(frag: Frag<T>): Promise<T[]> {
+  const { text, params } = compile(frag as unknown as Frag<never>);
+  const stmt = d1().prepare(text);
+  const res = params.length ? await stmt.bind(...params).all<T>() : await stmt.all<T>();
+  return res.results ?? [];
+}
 
-// ===== 连接串从哪来 =====
-// 线上（Workers）：Hyperdrive 绑定给的本地连接串。**必须走 Hyperdrive**——
-//   Workers 直连 Supabase 时 TCP 能建、SSLRequest 也回 S，但 startTls() 一律
-//   "TLS Handshake Failed"（6543/5432 都试过）。Hyperdrive 在 Cloudflare 侧替你把
-//   TLS 和连接池做掉，Worker 只需连它给的本地地址，顺带还有跨区连接复用。
-// 本地开发 / 其他运行时：env DATABASE_URL 直连。
-function resolveUrl(): string {
+// ---- 对外的 sql ----
+
+interface SqlFn {
+  <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Frag<T>;
+  (obj: Record<string, unknown>): Cols;
+  (rows: Record<string, unknown>[], ...cols: string[]): Cols;
+  /** 按 JSON 文本存（D1 没有 jsonb） */
+  json(v: unknown): JsonVal;
+  /** 展开成 (?, ?, ?)，给 in (...) 用 */
+  list(items: unknown[]): ListVal;
+}
+
+export const sql: SqlFn = Object.assign(
+  (first: TemplateStringsArray | Record<string, unknown> | Record<string, unknown>[], ...rest: unknown[]) => {
+    if (Array.isArray(first) && "raw" in first) {
+      return new Frag(first as unknown as string[], rest);
+    }
+    if (Array.isArray(first)) {
+      return new Cols(first as Record<string, unknown>[], rest as string[]);
+    }
+    return new Cols([first as Record<string, unknown>], []);
+  },
+  {
+    json: (v: unknown) => new JsonVal(v),
+    list: (items: unknown[]) => new ListVal(items),
+  },
+) as SqlFn;
+
+// ---- 时间：全部用 ISO-8601 字符串，比较交给字符串大小 ----
+// SQLite 的 datetime('now') 给的是 "YYYY-MM-DD HH:MM:SS"，和我们存的 ISO（带 T 和 Z）
+// 直接比大小会错位。所以时间的加减一律在 JS 里算好再绑进去，SQL 里只做字符串比较。
+export function nowIso(): string {
+  return new Date().toISOString();
+}
+
+export function isoDaysAgo(days: number): string {
+  return new Date(Date.now() - days * 86400_000).toISOString();
+}
+
+export function isoHoursAgo(hours: number): string {
+  return new Date(Date.now() - hours * 3600_000).toISOString();
+}
+
+// ---- 行解码 ----
+// D1 把 JSON 列原样当 TEXT 返回，这里统一还原成对象/数组，好让上层拿到的行
+// 与 lib/types.ts 的定义一致（前端代码零改动）。
+export function parseJsonCol<T>(v: unknown, fallback: T): T {
+  if (v === null || v === undefined) return fallback;
+  if (typeof v !== "string") return v as T;
   try {
-    const hd = (getCloudflareContext().env as unknown as Record<string, unknown>)?.HYPERDRIVE as
-      | { connectionString?: string }
-      | undefined;
-    if (hd?.connectionString) return hd.connectionString;
+    return JSON.parse(v) as T;
   } catch {
-    // 不在 Workers 请求上下文里，落到 env
+    return fallback;
   }
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("缺少数据库连接：线上请绑定 Hyperdrive，本地请配 DATABASE_URL");
-  return url;
-}
-
-function create() {
-  const url = resolveUrl();
-  return postgres(url, {
-    prepare: false,
-    ssl: needsSsl(url) ? "require" : false,
-    max: 5,
-    // 空闲连接保留 2 分钟：实测挂起集中在「新建连接到 pooler」这一步（约一半概率挂死），
-    // 已建立的连接一直健康，所以尽量少重连、多复用
-    idle_timeout: 120,
-    // 健康连接通常 1~3 秒内建好，超时就快速放弃让 postgres.js 自动换新连接重试。
-    // Cloudflare Workers 跑在离用户最近的边缘节点，到数据库的距离不固定（不像单区域的
-    // serverless 能与库同区），所以生产默认给到 8 秒；本地开发跨国链路更慢，放宽到 15。
-    // 想自己调就配 DB_CONNECT_TIMEOUT（秒）。
-    connect_timeout:
-      Number(process.env.DB_CONNECT_TIMEOUT) ||
-      (process.env.NODE_ENV === "production" ? 8 : 15),
-    // 连接最长存活 5 分钟：serverless 实例可能被冻结/休眠，醒来后旧 socket 已死，
-    // 复用它查询会无限挂起（曾导致页面挂满 300 秒函数超时）。定期换新连接兜底。
-    max_lifetime: 60 * 5,
-    // TCP 保活（秒）：尽早暴露对端已断开的连接，而不是等到查询时才卡死。
-    // workerd 的 socket 垫片不支持 setKeepAlive，置 null 关掉（Node 环境保持 30 秒）。
-    keep_alive: isWorkers ? null : 30,
-    // Workers 上关掉建连后那轮 pg_type 探测：多一次往返没必要，
-    // 且只影响自定义类型的自动解析，本项目全是内建类型，无感。
-    ...(isWorkers ? { fetch_types: false } : {}),
-  });
-}
-
-// ===== 为什么是懒加载的 Proxy 而不是模块级实例 =====
-// Hyperdrive 的连接串只有在**请求上下文里**才拿得到（getCloudflareContext），
-// 而模块顶层代码是在 isolate 启动时跑的，那时还没有请求。所以连接池不能在
-// import 阶段就建好，必须推迟到第一次真正用 sql 的时候。
-// 用 Proxy 保住原来的调用形态：sql`...` 走 apply、sql(rows, ...cols) 也走 apply、
-// sql.unsafe / sql.end 等走 get，所有调用方零改动。
-let pool: ReturnType<typeof postgres> | undefined = globalForDb._msSql;
-
-function getPool(): ReturnType<typeof postgres> {
-  if (!pool) {
-    pool = create();
-    if (process.env.NODE_ENV !== "production") globalForDb._msSql = pool;
-  }
-  return pool;
-}
-
-type Sql = ReturnType<typeof postgres>;
-
-export const sql: Sql = new Proxy(function () {} as unknown as Sql, {
-  apply(_target, _thisArg, args: unknown[]) {
-    return (getPool() as unknown as (...a: unknown[]) => unknown)(...args);
-  },
-  get(_target, prop) {
-    return (getPool() as unknown as Record<string | symbol, unknown>)[prop];
-  },
-}) as Sql;
-
-// 连接池自愈：查询挂起超时后调用，废弃旧池（里面可能全是死 socket）并重建。
-// 旧池异步关闭，不阻塞当前请求；正在挂起的查询会随旧池销毁而报错释放。
-export function resetSql() {
-  const dead = pool;
-  pool = create();
-  if (process.env.NODE_ENV !== "production") globalForDb._msSql = pool;
-  dead?.end({ timeout: 5 }).catch(() => {});
 }

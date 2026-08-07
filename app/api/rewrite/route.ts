@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { sql } from "@/lib/db";
-import { createTopic, createDraft, updateTopic } from "@/lib/queries";
+import { createTopic, createDraft, updateTopic, createMaterial, updateMaterial } from "@/lib/queries";
 import {
   distillResearch,
   extractUrls,
@@ -49,20 +48,18 @@ export async function POST(req: Request) {
   //    再兜一层 on conflict do nothing，撞键时不炸 500 而是明确报错。
   const dedupe = `manual:${crypto.randomUUID()}`;
   const title = content.slice(0, 40).replace(/\n/g, " ");
-  const rows = await sql<Material[]>`
-    insert into ms_materials ${sql({
-      source: "manual",
-      source_id: dedupe.split(":")[1],
-      dedupe_key: dedupe,
-      pillar,
-      title,
-      url: sourceUrl ?? null,
-      content,
-      status: "shortlisted",
-    })}
-    on conflict (dedupe_key) do nothing
-    returning *`;
-  const material = rows[0];
+  // 走 createMaterial 而不是在这儿手写 SQL：guardWrite 与 JSON 列编码都收口在那一层
+  const created = await createMaterial({
+    source: "manual",
+    source_id: dedupe.split(":")[1],
+    dedupe_key: dedupe,
+    pillar,
+    title,
+    url: sourceUrl ?? null,
+    content,
+  });
+  // 洗稿进来的素材直接算「已入选」，不用再去收件箱里点一次
+  const material = created ? await updateMaterial(created.id, { status: "shortlisted" }) : null;
   if (!material) {
     return NextResponse.json({ error: "素材创建失败（去重键冲突），请重试" }, { status: 500 });
   }

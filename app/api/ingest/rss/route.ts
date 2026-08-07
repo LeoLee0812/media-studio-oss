@@ -6,6 +6,7 @@ import {
   type RssFeedResult,
 } from "@/lib/ingest";
 import { translateNewMaterials } from "@/lib/translate";
+import { fetchSelf, cronAuthHeaders } from "@/lib/self-fetch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,12 +26,6 @@ export const maxDuration = 300;
 function selfBase(req: Request): string {
   const u = new URL(req.url);
   return `${u.protocol}//${u.host}`;
-}
-
-// 分片请求要能过 middleware 的门禁：用窄用途的 CRON_SECRET（它本来就只放行 /api/ingest/* 与 /api/cron/*）
-function authHeaders(): Record<string, string> {
-  const s = process.env.CRON_SECRET;
-  return s ? { authorization: `Bearer ${s}`, "content-type": "application/json" } : { "content-type": "application/json" };
 }
 
 export async function POST(req: Request) {
@@ -71,9 +66,9 @@ export async function POST(req: Request) {
     // 而且串行也更好定位是哪一片出的错
     for (const feedUrls of shards) {
       try {
-        const res = await fetch(`${base}/api/ingest/rss`, {
+        const res = await fetchSelf(base, "/api/ingest/rss", {
           method: "POST",
-          headers: authHeaders(),
+          headers: cronAuthHeaders({ "content-type": "application/json" }),
           body: JSON.stringify({ feedUrls }),
           signal: AbortSignal.timeout(120_000),
         });

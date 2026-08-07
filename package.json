@@ -7,12 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "query": "tsx --env-file=.env.local scripts/query.ts",
     "convert:themes": "tsx scripts/convert-wenyan-themes.ts",
-    "cleanup": "tsx --env-file=.env.local scripts/cleanup.ts",
     "build:cf": "opennextjs-cloudflare build",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "db:init": "wrangler d1 execute media-studio-oss --remote --file=db/0001_init.sql"
   },
   "dependencies": {
     "@ai-sdk/deepseek": "^1.0.0",
@@ -24,7 +23,6 @@
     "lucide-react": "^1.23.0",
     "marked": "^18.0.6",
     "next": "^16.3.0",
-    "postgres": "^3.4.5",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "tailwind-merge": "^3.6.0",

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { runDailyIngest, type DailyIngestResult, type RssIngestResult } from "@/lib/ingest";
 import { sendEmail, escapeHtml } from "@/lib/notify";
 import { isReadOnly } from "@/lib/read-only";
+import { fetchSelf, cronAuthHeaders } from "@/lib/self-fetch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,11 +39,9 @@ const siteUrl = process.env.SITE_URL || "http://localhost:3000";
 function rssViaOrchestrator(req: Request): () => Promise<RssIngestResult> {
   const u = new URL(req.url);
   return async () => {
-    const res = await fetch(`${u.protocol}//${u.host}/api/ingest/rss`, {
+    const res = await fetchSelf(`${u.protocol}//${u.host}`, "/api/ingest/rss", {
       method: "POST",
-      headers: process.env.CRON_SECRET
-        ? { authorization: `Bearer ${process.env.CRON_SECRET}` }
-        : {},
+      headers: cronAuthHeaders(),
       signal: AbortSignal.timeout(240_000),
     });
     const json = (await res.json()) as RssIngestResult & { error?: string };
