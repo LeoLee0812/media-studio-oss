@@ -37,6 +37,8 @@
   ],
   "exclude": [
     "node_modules",
-    "scripts"
+    "scripts",
+    "worker.ts",
+    ".open-next"
   ]
 }

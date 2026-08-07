@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "media-studio-oss",
+  // 入口是自己写的 worker.ts（不是 OpenNext 生成的那个）：
+  // 它包住 OpenNext 的 fetch，再补一个 scheduled 处理器接每日采集定时任务。
+  "main": "worker.ts",
+  "compatibility_date": "2026-08-01",
+  // nodejs_compat 必开：postgres.js 走 node:net/node:tls 连 Supabase，
+  // Buffer / crypto 等 Node 内置也靠它。
+  "compatibility_flags": ["nodejs_compat"],
+
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+
+  "kv_namespaces": [
+    {
+      // 图片对象存储（AI 配图 + 正文粘贴的截图），见 lib/blob.ts。
+      // 想换 R2 就注释掉这段、改绑 r2_buckets 的 MEDIA_R2，代码会自动优先用 R2。
+      "binding": "MEDIA_KV",
+      "id": "164099fb21dd40da9523678e88cb1a45"
+    }
+  ],
+
+  // 每日 RSS 采集：UTC 01:00（北京时间 09:00），对应原先 vercel.json 的 crons。
+  // 触发后由 worker.ts 的 scheduled 打自己的 /api/cron/daily，带 Bearer CRON_SECRET。
+  "triggers": {
+    "crons": ["0 1 * * *"]
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}

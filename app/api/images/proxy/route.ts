@@ -1,18 +1,29 @@
 import { NextResponse } from "next/server";
 import { isAllowedImageHost } from "@/lib/image-search";
 
+function safeHost(raw?: string): string | null {
+  if (!raw) return null;
+  try {
+    return new URL(raw).hostname;
+  } catch {
+    return null;
+  }
+}
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 // 配图图片代理下载：GET ?url=<图片地址>
 // 浏览器直接 fetch 第三方 CDN 会被 CORS 拦，走服务端转一手。
-// 域名白名单只放行 Pexels/Pixabay（图库配图）和自家 Vercel Blob（AI 生成配图）的主机，
-// 防被当成通用代理（SSRF）。
+// 域名白名单只放行 Pexels/Pixabay（图库配图）和本站自己（AI 生成配图存 R2/KV，直链走 /f/），
+// 防被当成通用代理（SSRF）。本站域名按真实请求 Host 取，不写死，换域名不用改代码。
 export async function GET(req: Request) {
-  const url = new URL(req.url).searchParams.get("url") ?? "";
-  if (!url || !isAllowedImageHost(url)) {
-    return NextResponse.json({ error: "仅允许代理 Pexels / Pixabay / 自家 Vercel Blob 的图片地址" }, { status: 400 });
+  const self = new URL(req.url);
+  const url = self.searchParams.get("url") ?? "";
+  const extraHosts = [self.hostname, safeHost(process.env.SITE_URL)].filter(Boolean) as string[];
+  if (!url || !isAllowedImageHost(url, extraHosts)) {
+    return NextResponse.json({ error: "仅允许代理 Pexels / Pixabay / 本站自身的图片地址" }, { status: 400 });
   }
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(30_000), cache: "no-store" });

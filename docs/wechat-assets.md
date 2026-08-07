@@ -35,7 +35,7 @@ LLM 按编号段落挑 2-4 个插图点（`illustrate_system`）→ Pexels / Pix
 - 两个入口：① 稿件页「AI 生成配图（知识图解，现生现画）」卡片手动触发，接口
   `POST /api/drafts/[id]/illustrate-ai`；② 设置页把「文内配图默认方式」预设成 AI 生图后，
   生文流水线出稿时自动跑（见下面「配图与封面预设」）。张数上限恒为 4，自动链路默认 2 张
-- 图片不内嵌 base64，一律传 Vercel Blob 换公网直链再插回正文（`uploadIllustrationToBlob()`）：
+- 图片不内嵌 base64，一律传对象存储（Cloudflare KV / R2，见 `lib/blob.ts`）换成 `/f/<key>` 直链再插回正文（`uploadIllustrationToBlob()`）：
   公众号只抓外链 `<img>` 转存，且 base64 会把 `ms_drafts.content` 撑到 MB 级
 - 本地保存走 `downloadAiIllustrations()` → `<笔记名>/AI配图/`（AI 图没有可代理的外部 URL，不走 `/api/images/proxy`）
 
@@ -56,14 +56,14 @@ LLM 按编号段落挑 2-4 个插图点（`illustrate_system`）→ Pexels / Pix
 ## 正文粘贴 / 拖拽图片（2026-08-03 起）
 稿件页正文 textarea 接管 `paste` 与 `drop`（`lib/paste-image.ts` + `components/DraftEditor.tsx`）：
 截图 ⌘V 或拖入图片文件 → 光标处插一行占位「上传中…」→ 浏览器内压缩 → `POST /api/images/upload`
-传 Vercel Blob → 占位替换成 `![粘贴图片](直链)`。多张并发，一张失败只撤掉它自己的占位并报错。
+传对象存储 → 占位替换成 `![粘贴图片](直链)`。多张并发，一张失败只撤掉它自己的占位并报错。
 
 - textarea 是纯文本控件，浏览器对「粘贴一张图」本身不做任何事（数据在 `clipboardData.files/items` 里），
   这不是 bug，是必须自己写的功能
 - **上传前先压**：Retina 截图动辄 5-10MB，超过 Serverless 4.5MB 请求体上限。canvas 等比缩到最长边
   1920 + JPEG 0.9；小于 800KB 的原样传（不把干净 PNG 白白转 JPEG，截图文字最怕二次压缩）
 - 换外链而非 base64 内嵌，理由与 AI 配图链路同一条
-- 需要 Vercel Blob 凭据（`BLOB_READ_WRITE_TOKEN`）；只读演示站下该接口由 middleware 统一 403
+- 需要在 `wrangler.jsonc` 绑定 `MEDIA_KV` 或 `MEDIA_R2`；只读演示站下该接口由 middleware 统一 403
 
 ## 生成收尾三路并行（2026-07-14 起）
 正文落库后，选题页/洗稿页把三个收尾任务 `Promise.allSettled` **并行**跑（完成时间差异大，谁先完成谁先亮）：

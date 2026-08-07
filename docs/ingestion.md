@@ -25,7 +25,7 @@ RSS 源大半是英文，素材流页面全是英文标题很难扫。采集后�
 RSS 素材超保留期一步删除：`rssRetentionDays`（设置页可改，代码兜底默认 7 天）内没处理的**直接物理删除**。曾经的「置 `expired` 软删 + 宽限期真删」两段式已按用户拍板移除（时效性新闻过期即失去价值，没有捞回场景），`MaterialStatus` 里也不再有 `expired`。被选题引用过的素材不清。手动录入（manual）是资产不是流水，永不清理。
 
 ## 每日 cron
-Vercel Cron `0 1 * * *`（UTC）= 北京 09:00，走 `runDailyIngest()`：
+Cloudflare Cron Trigger `0 1 * * *`（UTC）= 北京 09:00，由 `worker.ts` 的 scheduled 打 `/api/cron/daily`，走 `runDailyIngest()`：
 
 1. RSS 采集
 2. 英文素材翻译（`translateNewMaterials()`，关了开关/没 key 自动跳过）

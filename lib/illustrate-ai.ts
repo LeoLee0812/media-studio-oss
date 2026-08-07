@@ -3,6 +3,7 @@ import { getLlmModel } from "./llm";
 import { getPrompt } from "./prompt-store";
 import { resolveImageConfig } from "./config";
 import { baseSizeForRatio } from "./cover";
+import { putBlob } from "./blob";
 import {
   AI_ILLUSTRATE_STYLES,
   MAX_AI_ILLUSTRATIONS,
@@ -242,25 +243,24 @@ export async function generateAiIllustrationImage(params: {
   throw new Error("图像接口未返回图片数据");
 }
 
-// ---- ④ 上传到 Vercel Blob，换成公网直链 ----
+// ---- ④ 上传到对象存储，换成公网直链 ----
 // 为什么必须上传，不能把 base64 直接写进正文（2026-07-21 定）：
 // ① 公众号编辑器粘贴富文本时会自动抓取外链 <img> 转存到 mmbiz.qpic.cn，**base64 内嵌粘不过去**
 //    （结论见 docs/wechat-assets.md，图库配图链路一直好用就是因为 Pexels 本身给的是外链）；
 // ② 4 张 base64 图会让 ms_drafts.content 涨到 MB 级，也会让本路由的 JSON 响应超出
-//    Serverless 的响应体上限，直接把整条链路打挂。
-// Blob store 建议与函数部署区域对齐（少一次跨洲往返），access=public，
-// 凭据走 Vercel 自动注入的 BLOB_READ_WRITE_TOKEN，不用手写。
+//    响应体上限，直接把整条链路打挂。
+// 迁到 Cloudflare 后底层是 R2 或 KV（见 lib/blob.ts），直链走自家域名的 /f/ 路由，
+// key 本身带随机串，所以同名图注在不同稿件里不会互相覆盖。
 export async function uploadIllustrationToBlob(params: {
   b64: string;
   filename: string;
 }): Promise<string> {
-  const { put } = await import("@vercel/blob");
-  const buf = Buffer.from(params.b64, "base64");
-  // addRandomSuffix：同名图注在不同稿件里会重名，加随机后缀避免互相覆盖
-  const blob = await put(`ai-illustrations/${params.filename}`, buf, {
-    access: "public",
+  const bin = Uint8Array.from(atob(params.b64), (c) => c.charCodeAt(0));
+  const blob = await putBlob({
+    prefix: "ai-illustrations",
+    body: bin,
     contentType: "image/png",
-    addRandomSuffix: true,
+    filename: params.filename,
   });
   return blob.url;
 }

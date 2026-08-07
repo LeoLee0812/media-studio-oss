@@ -20,3 +20,6 @@ next-env.d.ts
 
 # 转换脚本缓存（wenyan 主题 CSS 下载缓存，不入库）
 /.cache/
+.dev.vars
+.open-next
+.wrangler

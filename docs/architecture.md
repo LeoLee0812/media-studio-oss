@@ -2,7 +2,7 @@
 
 ## 技术栈
 - Next.js 16 (App Router) + React 19 + TypeScript + Tailwind v4 + shadcn/base-ui + gsap
-- **不用 `output: export`**：本项目需要 API 路由 + middleware 门禁，走标准 Vercel serverless 部署
+- **不用 `output: export`**：本项目需要 API 路由 + middleware 门禁；部署形态是 Cloudflare Workers（`@opennextjs/cloudflare` 把整个应用打成一个 Worker）
 - 数据库：Supabase 项目，4 张 `ms_` 前缀表
 
 ## 文案引擎（四引擎）
@@ -43,7 +43,8 @@
 - 新建专用 Postgres 登录角色 **`ms_app`**（有独立密码），只在服务端经 **Supabase transaction pooler**（`aws-0-<region>.pooler.supabase.com:6543`）用 `postgres.js` 直连
 - 4 张表 **RLS 全开**，**只对 `ms_app` 角色建策略**（`using(true)`）；anon/publishable **无任何策略 = 默认全拒**
 - 前端不直连数据库，所有读写走 Next.js server route（`lib/db.ts` 的 `sql`）
-- 连接串在 env `DATABASE_URL`（本地 `.env.local` + Vercel env）
+- 连接串来自 Hyperdrive 绑定（线上）或 env `DATABASE_URL`（本地 `.env.local` / `.dev.vars`）。
+  线上必须走 Hyperdrive：Workers 直连 Supabase 的 TLS 握手会失败
 - 安全性等价于原设计：特权访问仅存在于服务端、门禁之后；公开 key 打 `ms_` 表读不到
 - 若日后拿到 service_role key，可平滑切回 REST，但当前方案无需外部 key
 
@@ -54,7 +55,7 @@ serverless 下到 pooler 的连接会间歇挂死（新建连接约半数挂起�
 2. `queries.ts` 读查询包 `guardRead`（5 秒超时 → 重建池 → 重试一次）
 3. 交互写包 `guardWrite`（10 秒超时 → 重建池 → 报错不重试）
 
-触发时打 `[db-watchdog]` 日志，可在 Vercel 后台观察。
+触发时打 `[db-watchdog]` 日志，可用 `wrangler tail` 或 Workers Observability 观察。
 
 > **硬性约定**：改动查询函数时保持这个包裹结构。
 
@@ -80,7 +81,7 @@ serverless 下到 pooler 的连接会间歇挂死（新建连接约半数挂起�
 - **只读模式**（`READ_ONLY=1`，见 `lib/read-only.ts`）：与门禁正交的第二道闸，公开演示站专用。
   middleware 在门禁判断**之前**拒绝一切非 GET/HEAD/OPTIONS 请求（403），`/api/auth/*` 除外
   （只读 + 有密码门是合法组合，拦了就没人能登录）；`/api/cron/daily` 是全站唯一用 GET 触发写库的入口，
-  它在路由内部自己判断只读并返回 `{skipped:true}`（返回 200 而非 403，免得 Vercel 定时任务天天记失败）；
+  它在路由内部自己判断只读并返回 `{skipped:true}`（返回 200 而非 403，免得 Cron Trigger 天天记失败）；
   前端 `app/layout.tsx` 把状态传给 `SiteHeader` 挂提示条，`app/settings/page.tsx` 整页替换成说明卡片
   （那一屏能改引擎 Base URL，是现成的 SSRF 入口，UI 上直接拿掉）。
 

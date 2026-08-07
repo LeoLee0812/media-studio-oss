@@ -108,7 +108,7 @@ export async function searchOneImage(keyword: string, usedUrls: Set<string>): Pr
 }
 
 // 图片代理下载的域名白名单（防 SSRF：只放行两个图库的图片 CDN）
-export function isAllowedImageHost(raw: string): boolean {
+export function isAllowedImageHost(raw: string, extraHosts: string[] = []): boolean {
   try {
     const host = new URL(raw).hostname.toLowerCase();
     return (
@@ -116,8 +116,9 @@ export function isAllowedImageHost(raw: string): boolean {
       host === "pixabay.com" ||
       host === "cdn.pixabay.com" ||
       host.endsWith(".pixabay.com") ||
-      // AI 生成配图存在自家 Vercel Blob 上，本地备份同样走这个代理
-      host.endsWith(".public.blob.vercel-storage.com")
+      // AI 生成配图与粘贴图片现在存在自家 R2/KV，直链走本站 /f/ 路由，
+      // 所以要把「本站自己的域名」也放进白名单（由调用方按真实请求 Host 传进来）
+      extraHosts.some((h) => h && host === h.toLowerCase())
     );
   } catch {
     return false;

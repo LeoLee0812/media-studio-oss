@@ -96,8 +96,23 @@ async function insertRssItems(
 // 错误按 feed 隔离：某源抓取失败（allSettled 的 rejected）或落库失败只标记该源，不影响其他源。
 // 采集侧只收「保留期内」的条目（发布时间超过 rssRetentionDays 的直接跳过）——
 // 清理侧按 created_at 算过期，归档型 feed 的陈年旧文若放进来要占满收件箱一整个保留期。
-export async function ingestRss(): Promise<RssIngestResult> {
-  const feeds = await resolveRssFeeds();
+//
+// 【Cloudflare Workers 专属约束】单次 Worker 调用最多发 50 个子请求（免费版；付费 1000），
+// **HTTP 重定向也各算一个**。十来个订阅源一起抓很容易顶穿，报
+// "Too many subrequests by single Worker invocation"。
+// 所以采集被拆成「编排 + 分片」两层：/api/ingest/rss 不带参数时是编排层，
+// 把订阅源切成每片 RSS_FEEDS_PER_INVOCATION 个，逐片回调自己——**每次调用各有一份
+// 独立的 50 次预算**。本函数就是分片执行体，opts.feedUrls 指定这一片抓哪几个源。
+export async function ingestRss(opts?: {
+  /** 只抓这几个源（分片模式）；不传就是全部 */
+  feedUrls?: string[];
+  /** 分片模式下不写同步状态，由编排层合并后统一写一次 */
+  skipSyncState?: boolean;
+}): Promise<RssIngestResult> {
+  const all = await resolveRssFeeds();
+  const feeds = opts?.feedUrls?.length
+    ? all.filter((f) => opts.feedUrls!.includes(f.url))
+    : all;
   const retentionDays = await resolveRssRetentionDays();
   const sinceMs = Date.now() - retentionDays * 86400_000;
 
@@ -131,6 +146,14 @@ export async function ingestRss(): Promise<RssIngestResult> {
 
   const fetched = results.reduce((s, r) => s + r.fetched, 0);
   const inserted = results.reduce((s, r) => s + r.inserted, 0);
+  if (!opts?.skipSyncState) await writeRssSyncState(results, feeds.length);
+  return { fetched, inserted, feeds: results };
+}
+
+/** 把逐源结果汇总写进同步状态（设置页的「上次采集」就读这里）。分片模式下由编排层调一次。 */
+export async function writeRssSyncState(results: RssFeedResult[], feedCount: number): Promise<void> {
+  const fetched = results.reduce((s, r) => s + r.fetched, 0);
+  const inserted = results.reduce((s, r) => s + r.inserted, 0);
   const failed = results.filter((r) => r.error);
   const anySuccess = results.some((r) => !r.error);
 
@@ -140,7 +163,7 @@ export async function ingestRss(): Promise<RssIngestResult> {
   await setSyncState(RSS_SYNC_KEY, {
     lastRunAt: now,
     // 没配置源也算「成功跑完」；全部源失败才不刷新成功时间
-    lastSuccessAt: feeds.length === 0 || anySuccess ? now : prev.lastSuccessAt ?? null,
+    lastSuccessAt: feedCount === 0 || anySuccess ? now : prev.lastSuccessAt ?? null,
     lastError: failed.length
       ? failed.map((r) => `${r.label ?? r.url}: ${r.error}`).join("；")
       : null,
@@ -148,8 +171,20 @@ export async function ingestRss(): Promise<RssIngestResult> {
     lastFetched: fetched,
     lastInserted: inserted,
   });
+}
 
-  return { fetched, inserted, feeds: results };
+// 每次 Worker 调用抓几个源。免费版 50 次子请求预算里，除了 feed 本体还要留给
+// HTTP 重定向、数据库 TCP 连接（postgres.js 最多 5 条）与翻译调用，6 是实测稳的档位。
+export const RSS_FEEDS_PER_INVOCATION = Number(process.env.RSS_FEEDS_PER_INVOCATION) || 6;
+
+/** 把订阅源切成若干片，供编排层逐片回调自己。 */
+export async function planRssShards(): Promise<string[][]> {
+  const feeds = await resolveRssFeeds();
+  const shards: string[][] = [];
+  for (let i = 0; i < feeds.length; i += RSS_FEEDS_PER_INVOCATION) {
+    shards.push(feeds.slice(i, i + RSS_FEEDS_PER_INVOCATION).map((f) => f.url));
+  }
+  return shards;
 }
 
 // ===== 每日摘要邮件 =====
@@ -215,10 +250,14 @@ export interface DailyIngestResult {
 // 每日流程：RSS 采集 → 英文素材翻译 → 清理 → 摘要邮件。
 // 清理排在采集之后：刚采进来的条目 created_at 是当下，不会被自己这轮清掉。
 // 各步错误隔离：任何一步失败都不阻断后续步骤，结果汇总在返回值里。
-export async function runDailyIngest(): Promise<DailyIngestResult> {
+// runRss 可注入：Cloudflare 上由 /api/cron/daily 传一个「走 /api/ingest/rss 编排层」的实现进来，
+// 好让采集分摊到多次 Worker 调用上（子请求预算，见 ingestRss 上方注释）。不传就本地直跑。
+export async function runDailyIngest(
+  runRss: () => Promise<RssIngestResult> = () => ingestRss(),
+): Promise<DailyIngestResult> {
   let rss: DailyIngestResult["rss"];
   try {
-    rss = await ingestRss();
+    rss = await runRss();
   } catch (e) {
     rss = { error: e instanceof Error ? e.message : String(e) };
   }

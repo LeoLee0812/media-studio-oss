@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runDailyIngest, type DailyIngestResult } from "@/lib/ingest";
+import { runDailyIngest, type DailyIngestResult, type RssIngestResult } from "@/lib/ingest";
 import { sendEmail, escapeHtml } from "@/lib/notify";
 import { isReadOnly } from "@/lib/read-only";
 
@@ -7,7 +7,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-// 全站唯一的每日定时任务入口（vercel.json 的 cron 指到这里，带 Bearer CRON_SECRET）：
+// 全站唯一的每日定时任务入口（wrangler.jsonc 的 triggers.crons 触发 worker.ts 的 scheduled，
+// 由它带 Bearer CRON_SECRET 打到这里）：
 //   /api/cron/daily        —— 编排入口（RSS 采集 + 翻译 + 清理 + 摘要/告警邮件）
 //   /api/ingest/rss   POST —— 纯手动 RSS 采集（设置页按钮）
 //   /api/cron/cleanup POST —— 纯手动清理（设置页按钮）
@@ -31,14 +32,33 @@ function collectErrors(result: DailyIngestResult): string[] {
 
 const siteUrl = process.env.SITE_URL || "http://localhost:3000";
 
-export async function GET() {
+// RSS 这一步不本地直跑，而是打 /api/ingest/rss 的编排层：
+// 那条路由会把订阅源切片、逐片换一次新的 Worker 调用，绕开单次 50 个子请求的上限
+// （详见 lib/ingest.ts 里 ingestRss 上方的注释）。
+function rssViaOrchestrator(req: Request): () => Promise<RssIngestResult> {
+  const u = new URL(req.url);
+  return async () => {
+    const res = await fetch(`${u.protocol}//${u.host}/api/ingest/rss`, {
+      method: "POST",
+      headers: process.env.CRON_SECRET
+        ? { authorization: `Bearer ${process.env.CRON_SECRET}` }
+        : {},
+      signal: AbortSignal.timeout(240_000),
+    });
+    const json = (await res.json()) as RssIngestResult & { error?: string };
+    if (json.error) throw new Error(json.error);
+    return json;
+  };
+}
+
+export async function GET(req: Request) {
   // 只读演示站：采集会写库，直接跳过。返回 200 而不是 403，
-  // 否则 Vercel 的定时任务每天记一次失败，看着像故障。
+  // 否则 Cloudflare 的定时触发器每天记一次失败，看着像故障。
   if (isReadOnly()) {
     return NextResponse.json({ ok: true, skipped: true, reason: "只读模式，已跳过每日采集" });
   }
   try {
-    const result = await runDailyIngest();
+    const result = await runDailyIngest(rssViaOrchestrator(req));
     const errors = collectErrors(result);
     if (errors.length > 0) {
       await sendEmail({

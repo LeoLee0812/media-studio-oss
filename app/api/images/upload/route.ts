@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
+import { putBlob } from "@/lib/blob";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// 粘贴/拖拽进正文的图片上传：POST multipart/form-data { file }，传 Vercel Blob 换公网直链。
+// 粘贴/拖拽进正文的图片上传：POST multipart/form-data { file }，存进对象存储换公网直链。
 // 为什么必须换成外链（与 AI 配图链路同一条理由，见 lib/illustrate-ai.ts 的长注释）：
 // ① 公众号编辑器粘贴富文本时只会抓取外链 <img> 转存，base64 内嵌粘不过去；
 // ② base64 直接写进 ms_drafts.content 会让正文涨到 MB 级。
-// 请求体上限：Vercel Serverless 是 4.5MB，所以前端在上传前先压过一轮（lib/paste-image.ts）。
+// 请求体上限：Cloudflare Workers 免费版单请求 100MB，但这里仍卡 4MB——
+// 前端上传前已先压过一轮（lib/paste-image.ts），超过这个数基本是压缩没生效。
 const MAX_BYTES = 4 * 1024 * 1024;
 
 export async function POST(req: Request) {
@@ -34,14 +36,13 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { put } = await import("@vercel/blob");
     const ext = file.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
     const name = (form.get("filename") as string | null)?.trim() || `粘贴图片.${ext}`;
-    // addRandomSuffix：不同稿件粘的截图重名很常见，加随机后缀避免互相覆盖
-    const blob = await put(`pasted/${name}`, file, {
-      access: "public",
+    const blob = await putBlob({
+      prefix: "pasted",
+      body: await file.arrayBuffer(),
       contentType: file.type,
-      addRandomSuffix: true,
+      filename: name,
     });
     return NextResponse.json({ url: blob.url, size: file.size, type: file.type });
   } catch (e) {
